@@ -472,3 +472,133 @@ async def process_manager_role(message: Message, state: FSMContext):
         sent_message = await message.answer("Ошибка при изменении роли.", reply_markup=kb.go_to_dashboard)
         user_data['bot_messages'].append(sent_message.message_id)
     await state.clear()
+
+
+@router.callback_query(F.data == "delete_employee")
+async def delete_employee(callback_query: CallbackQuery, state: FSMContext):
+    text = "Выберите, какого сотрудника хотите удалить:"
+    if callback_query.message.photo:
+        await callback_query.message.edit_caption(
+            caption=text,
+            reply_markup=kb.delete_employee_role_keyboard
+        )
+    else:
+        await callback_query.message.edit_text(
+            text=text,
+            reply_markup=kb.delete_employee_role_keyboard
+        )
+
+
+@router.callback_query(F.data == "delete_admin")
+async def delete_admin(callback_query: CallbackQuery, state: FSMContext):
+    page = 1
+    admins = await rq.get_admins_by_page(page)
+    total = await rq.get_total_admins()
+    has_prev = page > 1
+    has_next = (page * 10) < total
+    markup = kb.create_delete_list_keyboard(admins, page, has_prev, has_next, role="admin")
+    text = "Список администраторов:"
+    if callback_query.message.photo:
+        await callback_query.message.edit_caption(caption=text, reply_markup=markup)
+    else:
+        await callback_query.message.edit_text(text=text, reply_markup=markup)
+
+
+@router.callback_query(F.data == "delete_manager")
+async def delete_manager(callback_query: CallbackQuery, state: FSMContext):
+    """
+    Обработчик выбора удаления менеджера.
+    Выводит список менеджеров с пагинацией.
+    """
+    page = 1
+    managers = await rq.get_managers_by_page(page)
+    total = await rq.get_total_managers()
+    has_prev = page > 1
+    has_next = (page * 10) < total
+    markup = kb.create_delete_list_keyboard(managers, page, has_prev, has_next, role="manager")
+    text = "Список менеджеров:"
+    if callback_query.message.photo:
+        await callback_query.message.edit_caption(caption=text, reply_markup=markup)
+    else:
+        await callback_query.message.edit_text(text=text, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("delete_page:"))
+async def handle_delete_pagination(callback_query: CallbackQuery, state: FSMContext):
+    parts = callback_query.data.split(":")
+    role = parts[1]
+    page = int(parts[2])
+    if role == "admin":
+        employees = await rq.get_admins_by_page(page)
+        total = await rq.get_total_admins()
+        text = "Список администраторов:"
+    elif role == "manager":
+        employees = await rq.get_managers_by_page(page)
+        total = await rq.get_total_managers()
+        text = "Список менеджеров:"
+    else:
+        await callback_query.answer("Неверная роль.")
+        return
+
+    has_prev = page > 1
+    has_next = (page * 10) < total
+    markup = kb.create_delete_list_keyboard(employees, page, has_prev, has_next, role=role)
+    if callback_query.message.photo:
+        await callback_query.message.edit_caption(caption=text, reply_markup=markup)
+    else:
+        await callback_query.message.edit_text(text=text, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("delete_detail:"))
+async def handle_delete_detail(callback_query: CallbackQuery, state: FSMContext):
+    parts = callback_query.data.split(":")
+    role = parts[1]
+    user_id = int(parts[2])
+
+    if role == "admin":
+        employee = await rq.get_admin_by_id(user_id)
+    elif role == "manager":
+        employee = await rq.get_user_by_id(user_id)
+    else:
+        await callback_query.answer("Неверная роль.")
+        return
+
+    if not employee:
+        await callback_query.answer("Сотрудник не найден.")
+        return
+
+    text = (
+        f"Вы действительно хотите удалить сотрудника?\n\n"
+        f"ID: {employee['id']}\nФИО: {employee['full_name']}\nРоль: {employee['role']}\n\n"
+        "Внимание: При удалении сотрудника все его данные будут безвозвратно утрачены!"
+    )
+    markup = kb.confirm_delete_keyboard(employee['id'], role)
+    if callback_query.message.photo:
+        await callback_query.message.edit_caption(caption=text, reply_markup=markup)
+    else:
+        await callback_query.message.edit_text(text=text, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("confirm_delete:"))
+async def confirm_delete(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    parts = callback_query.data.split(":")
+    role = parts[1]
+    user_id = int(parts[2])
+    confirm = parts[3]
+    if confirm == "yes":
+        success = await rq.delete_user_by_id(user_id)
+        if success:
+            sent_message = await callback_query.message.answer("Сотрудник успешно удалён.", reply_markup=kb.go_to_dashboard)
+            user_data['bot_messages'].append(sent_message.message_id)
+        else:
+            sent_message = await callback_query.message.answer("Ошибка при удалении сотрудника.", reply_markup=kb.go_to_dashboard)
+            user_data['bot_messages'].append(sent_message.message_id)
+    else:
+        sent_message = await callback_query.message.answer("Удаление отменено.", reply_markup=kb.go_to_dashboard)
+        user_data['bot_messages'].append(sent_message.message_id)
+

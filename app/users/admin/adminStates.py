@@ -19,3 +19,7 @@ class AdminEdit(StatesGroup):
 class ManagerEdit(StatesGroup):
     waiting_for_fullname = State()
     waiting_for_role = State()
+
+
+class DeleteEmployeeStates(StatesGroup):
+    waiting_for_confirmation = State()

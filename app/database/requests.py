@@ -149,3 +149,24 @@ async def update_manager_role(manager_id: int, new_role: str) -> bool:
             print(f"Ошибка при обновлении роли: {e}")
             await session.rollback()
             return False
+
+
+async def get_user_by_id(user_id: int) -> Optional[Dict]:
+    async with async_session() as session:
+        query = select(User).where(User.id == user_id)
+        user = await session.scalar(query)
+        if user:
+            return {"id": user.id, "full_name": user.full_name, "role": user.role}
+        return None
+
+
+async def delete_user_by_id(user_id: int) -> bool:
+    async with async_session() as session:
+        try:
+            await session.execute(delete(User).where(User.id == user_id))
+            await session.commit()
+            return True
+        except Exception as e:
+            print(f"Ошибка при удалении сотрудника: {e}")
+            await session.rollback()
+            return False
