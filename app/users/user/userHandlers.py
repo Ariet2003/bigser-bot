@@ -51,8 +51,9 @@ async def user_account(message: Message, state: FSMContext):
 
     await state.clear()
 
-    sent_message = await message.answer(
-        text="Привет, пользователь!"
+    sent_message = await message.answer_photo(
+        photo=utils.user_png,
+        caption="Добро пожаловать! 🎉"
     )
 
     # Добавляем сообщение бота

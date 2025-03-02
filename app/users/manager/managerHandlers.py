@@ -51,8 +51,9 @@ async def manager_account(message: Message, state: FSMContext):
 
     await state.clear()
 
-    sent_message = await message.answer(
-        text="Привет, менеджер!"
+    sent_message = await message.answer_photo(
+        photo=utils.manager_png,
+        caption="Добро пожаловать в панель менеджера!"
     )
 
     # Добавляем сообщение бота

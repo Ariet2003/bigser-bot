@@ -3,7 +3,7 @@ from datetime import datetime
 
 from aiogram.enums import ParseMode
 from aiogram.types import Message, CallbackQuery
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram import F, Router
 
 from app.users.admin import adminKeyboards as kb
@@ -13,6 +13,7 @@ from app.database import requests as rq
 from aiogram.fsm.context import FSMContext
 
 from app.utils import sent_message_add_screen_ids, router
+from app import utils
 
 
 # Function to delete previous messages
@@ -53,9 +54,23 @@ async def admin_account(message: Message, state: FSMContext):
 
     await state.clear()
 
-    sent_message = await message.answer(
-        text="Привет, админ!"
+    sent_message = await message.answer_photo(
+        photo=utils.adminka_png,
+        caption="Добро пожаловать в панель администратора! Выберите нужный раздел."
     )
 
     # Добавляем сообщение бота
     user_data['bot_messages'].append(sent_message.message_id)
+
+# Хендлер для обработки команды "/photo"
+@router.message(Command("photo"))
+async def request_photo_handler(message: Message):
+    await message.answer("Пожалуйста, отправьте фото, чтобы я мог получить его ID.")
+
+
+# Хендлер для обработки фото от пользователя
+@router.message(F.photo)
+async def photo_handler(message: Message):
+    # Берем фотографию в самом большом разрешении и получаем ее ID
+    photo_id = message.photo[-1].file_id
+    await message.answer(f"ID вашей картинки: {photo_id}")
