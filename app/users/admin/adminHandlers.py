@@ -359,3 +359,116 @@ async def process_admin_role(message: Message, state: FSMContext):
         sent_message = await message.answer("Ошибка при изменении роли.", reply_markup=kb.go_to_dashboard)
         user_data['bot_messages'].append(sent_message.message_id)
     await state.clear()
+
+
+
+@router.callback_query(F.data == "edit_manager")
+async def handle_edit_manager(callback_query: CallbackQuery, state: FSMContext):
+    page = 1  # начинаем с первой страницы
+    managers = await rq.get_managers_by_page(page)
+    total = await rq.get_total_managers()
+    has_prev = page > 1
+    has_next = (page * 10) < total
+    markup = kb.create_manager_list_keyboard(managers, page, has_prev, has_next)
+
+    # Если сообщение содержит фотографию, редактируем подпись, иначе – текст
+    if callback_query.message.photo:
+        await callback_query.message.edit_caption(caption="Список менеджеров:", reply_markup=markup)
+    else:
+        await callback_query.message.edit_text(text="Список менеджеров:", reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("manager_page:"))
+async def handle_manager_pagination(callback_query: CallbackQuery, state: FSMContext):
+    page = int(callback_query.data.split(":")[1])
+    managers = await rq.get_managers_by_page(page)
+    total = await rq.get_total_managers()
+    has_prev = page > 1
+    has_next = (page * 10) < total
+    markup = kb.create_manager_list_keyboard(managers, page, has_prev, has_next)
+    await callback_query.message.edit_text(text="Список менеджеров:", reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("manager_detail:"))
+async def handle_manager_detail(callback_query: CallbackQuery, state: FSMContext):
+    manager_id = int(callback_query.data.split(":")[1])
+    manager = await rq.get_manager_by_id(manager_id)
+    if not manager:
+        await callback_query.answer("Менеджер не найден.")
+        return
+    text = f"Детали менеджера:\nID: {manager['id']}\nФИО: {manager['full_name']}\nРоль: {manager['role']}"
+    markup = kb.manager_detail_keyboard(manager_id)
+
+    # Если сообщение содержит фотографию, изменяем подпись, иначе — текст.
+    if callback_query.message.photo:
+        await callback_query.message.edit_caption(caption=text, reply_markup=markup)
+    else:
+        await callback_query.message.edit_text(text=text, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("edit_manager_fullname:"))
+async def edit_manager_fullname(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    manager_id = int(callback_query.data.split(":")[1])
+    await state.update_data(manager_id=manager_id)
+    sent_message = await callback_query.message.answer("Введите новое ФИО для менеджера:")
+    await state.set_state(st.ManagerEdit.waiting_for_fullname)
+
+    user_data['bot_messages'].append(sent_message.message_id)
+
+@router.message(st.ManagerEdit.waiting_for_fullname)
+async def process_manager_fullname(message: Message, state: FSMContext):
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    data = await state.get_data()
+    manager_id = data.get("manager_id")
+    new_fullname = message.text
+    success = await rq.update_manager_fullname(manager_id, new_fullname)
+    if success:
+        sent_message = await message.answer("ФИО успешно изменено.", reply_markup=kb.go_to_dashboard)
+        user_data['bot_messages'].append(sent_message.message_id)
+    else:
+        sent_message = await message.answer("Ошибка при изменении ФИО.", reply_markup=kb.go_to_dashboard)
+        user_data['bot_messages'].append(sent_message.message_id)
+
+    await state.clear()
+
+
+@router.callback_query(F.data.startswith("edit_manager_role:"))
+async def edit_manager_role(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    manager_id = int(callback_query.data.split(":")[1])
+    await state.update_data(manager_id=manager_id)
+    sent_message = await callback_query.message.answer("Введите новую роль для менеджера:")
+    await state.set_state(st.ManagerEdit.waiting_for_role)
+    user_data['bot_messages'].append(sent_message.message_id)
+
+@router.message(st.ManagerEdit.waiting_for_role)
+async def process_manager_role(message: Message, state: FSMContext):
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    data = await state.get_data()
+    manager_id = data.get("manager_id")
+    new_role = message.text
+    success = await rq.update_manager_role(manager_id, new_role)
+    if success:
+        sent_message = await message.answer("Роль успешно изменена.", reply_markup=kb.go_to_dashboard)
+        user_data['bot_messages'].append(sent_message.message_id)
+    else:
+        sent_message = await message.answer("Ошибка при изменении роли.", reply_markup=kb.go_to_dashboard)
+        user_data['bot_messages'].append(sent_message.message_id)
+    await state.clear()

@@ -101,3 +101,51 @@ async def update_admin_role(admin_id: int, new_role: str) -> bool:
             print(f"Ошибка при обновлении роли: {e}")
             await session.rollback()
             return False
+
+async def get_managers_by_page(page: int, per_page: int = 10) -> List[Dict]:
+    async with async_session() as session:
+        query = select(User.id, User.full_name).where(User.role == "MANAGER")\
+                    .limit(per_page).offset((page - 1) * per_page)
+        result = await session.execute(query)
+        managers = [{"id": manager_id, "full_name": full_name} for manager_id, full_name in result.all()]
+        return managers
+
+async def get_total_managers() -> int:
+    async with async_session() as session:
+        query = select(func.count()).select_from(User).where(User.role == "MANAGER")
+        total = await session.scalar(query)
+        return total
+
+async def get_manager_by_id(manager_id: int) -> Optional[Dict]:
+    async with async_session() as session:
+        query = select(User).where(User.id == manager_id)
+        manager = await session.scalar(query)
+        if manager:
+            return {"id": manager.id, "full_name": manager.full_name, "role": manager.role}
+        return None
+
+async def update_manager_fullname(manager_id: int, new_fullname: str) -> bool:
+    async with async_session() as session:
+        try:
+            await session.execute(
+                update(User).where(User.id == manager_id).values(full_name=new_fullname)
+            )
+            await session.commit()
+            return True
+        except Exception as e:
+            print(f"Ошибка при обновлении ФИО: {e}")
+            await session.rollback()
+            return False
+
+async def update_manager_role(manager_id: int, new_role: str) -> bool:
+    async with async_session() as session:
+        try:
+            await session.execute(
+                update(User).where(User.id == manager_id).values(role=new_role)
+            )
+            await session.commit()
+            return True
+        except Exception as e:
+            print(f"Ошибка при обновлении роли: {e}")
+            await session.rollback()
+            return False

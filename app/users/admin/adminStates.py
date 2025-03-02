@@ -15,3 +15,7 @@ class AddManager(StatesGroup):
 class AdminEdit(StatesGroup):
     waiting_for_fullname = State()
     waiting_for_role = State()
+
+class ManagerEdit(StatesGroup):
+    waiting_for_fullname = State()
+    waiting_for_role = State()
