@@ -94,3 +94,79 @@ async def manage_employees(callback_query: CallbackQuery, state: FSMContext):
 async def go_to_dashboard(callback_query: CallbackQuery, state: FSMContext):
     await admin_account(callback_query.message, state)
 
+@router.callback_query(F.data == 'add_employee')
+async def add_employee(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    sent_message = await callback_query.message.answer_photo(photo=utils.adminka_png,
+                                                             caption='Выберите, какого сотрудника вы хотите добавить.',
+                                                             reply_markup=kb.add_employee)
+
+    user_data['bot_messages'].append(sent_message.message_id)
+
+@router.callback_query(F.data == 'add_admin')
+async def add_admin(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    sent_message = await callback_query.message.answer(
+        text="Напишите telegram id пользователя",
+        reply_markup=kb.go_to_dashboard
+    )
+    await state.set_state(st.AddAdmin.write_telegram_id)
+
+    user_data['bot_messages'].append(sent_message.message_id)
+
+@router.message(st.AddAdmin.write_telegram_id)
+async def add_admin_second(message: Message, state: FSMContext):
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    new_admin_telegram_id = message.text
+    await state.update_data(new_admin_telegram_id=new_admin_telegram_id)
+    sent_message = await message.answer(
+        text="Напишите ФИО пользователя",
+        reply_markup=kb.go_to_dashboard
+    )
+
+    await state.set_state(st.AddAdmin.write_fullname)
+    user_data['bot_messages'].append(sent_message.message_id)
+
+
+@router.message(st.AddAdmin.write_fullname)
+async def add_admin_third(message: Message, state: FSMContext):
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    state_data = await state.get_data()
+    new_admin_telegram_id = state_data.get('new_admin_telegram_id')
+    new_admin_fullname = message.text
+
+    print(new_admin_telegram_id)
+    print(new_admin_fullname)
+
+    is_added = await rq.add_or_update_user(telegram_id=new_admin_telegram_id,
+                                     full_name=new_admin_fullname,
+                                     role="ADMIN")
+
+    if is_added:
+        sent_message = await message.answer(
+            text="Новый администратор успешно добавлен в систему.",
+            reply_markup=kb.go_to_dashboard
+        )
+    else:
+        sent_message = await message.answer(
+            text="Не удалось добавить администратора. Пожалуйста, попробуйте снова.",
+            reply_markup=kb.go_to_dashboard
+        )
+
+    user_data['bot_messages'].append(sent_message.message_id)

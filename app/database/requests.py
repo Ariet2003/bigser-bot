@@ -27,4 +27,21 @@ async def check_role(telegram_id: str) -> str:
             session.add(new_user)
             await session.commit()
             return "USER"
-        
+
+async def add_or_update_user(telegram_id: str, full_name: str, role: str) -> bool:
+    try:
+        async with async_session() as session:
+            user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+            if user is not None:
+                # Обновляем данные существующего пользователя
+                user.full_name = full_name
+                user.role = role
+            else:
+                # Добавляем нового пользователя
+                new_user = User(telegram_id=telegram_id, full_name=full_name, role=role)
+                session.add(new_user)
+            await session.commit()
+            return True
+    except Exception as e:
+        print(f"Ошибка при добавлении/обновлении пользователя: {e}")
+        return False

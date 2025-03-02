@@ -17,5 +17,15 @@ manage_employees_button = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="⬅️ В личный кабинет", callback_data='go_to_dashboard')]
 ])
 
+add_employee = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="➕ Администратор", callback_data='add_admin')],
+    [InlineKeyboardButton(text="👨‍💼 Менеджер", callback_data='add_manager')],
+    [InlineKeyboardButton(text="⬅️ В личный кабинет", callback_data='go_to_dashboard')]
+])
+
+go_to_dashboard = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="⬅️ В личный кабинет", callback_data='go_to_dashboard')]
+])
+
 
 
