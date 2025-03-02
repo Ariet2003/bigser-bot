@@ -56,7 +56,8 @@ async def admin_account(message: Message, state: FSMContext):
 
     sent_message = await message.answer_photo(
         photo=utils.adminka_png,
-        caption="Добро пожаловать в панель администратора! Выберите нужный раздел."
+        caption="Добро пожаловать в панель администратора! Выберите нужный раздел.",
+        reply_markup=kb.admin_button
     )
 
     # Добавляем сообщение бота
@@ -74,3 +75,22 @@ async def photo_handler(message: Message):
     # Берем фотографию в самом большом разрешении и получаем ее ID
     photo_id = message.photo[-1].file_id
     await message.answer(f"ID вашей картинки: {photo_id}")
+
+
+@router.callback_query(F.data == 'manage_employees')
+async def manage_employees(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+
+    await delete_previous_messages(callback_query.message, tuid)
+    sent_message = await callback_query.message.answer_photo(photo=utils.adminka_png,
+                                                             caption='Выберите нужное действие.',
+                                                             reply_markup=kb.manage_employees_button)
+
+    user_data['bot_messages'].append(sent_message.message_id)
+
+@router.callback_query(F.data == 'go_to_dashboard')
+async def go_to_dashboard(callback_query: CallbackQuery, state: FSMContext):
+    await admin_account(callback_query.message, state)
+
