@@ -170,3 +170,67 @@ async def add_admin_third(message: Message, state: FSMContext):
         )
 
     user_data['bot_messages'].append(sent_message.message_id)
+
+@router.callback_query(F.data == 'add_manager')
+async def add_manager(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    sent_message = await callback_query.message.answer(
+        text="Напишите telegram id пользователя",
+        reply_markup=kb.go_to_dashboard
+    )
+    await state.set_state(st.AddManager.write_telegram_id)
+
+    user_data['bot_messages'].append(sent_message.message_id)
+
+@router.message(st.AddManager.write_telegram_id)
+async def add_manager_second(message: Message, state: FSMContext):
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    new_manager_telegram_id = message.text
+    await state.update_data(new_manager_telegram_id=new_manager_telegram_id)
+    sent_message = await message.answer(
+        text="Напишите ФИО пользователя",
+        reply_markup=kb.go_to_dashboard
+    )
+
+    await state.set_state(st.AddManager.write_fullname)
+    user_data['bot_messages'].append(sent_message.message_id)
+
+
+@router.message(st.AddManager.write_fullname)
+async def add_manager_third(message: Message, state: FSMContext):
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    state_data = await state.get_data()
+    new_manager_telegram_id = state_data.get('new_manager_telegram_id')
+    new_manager_fullname = message.text
+
+    print(new_manager_telegram_id)
+    print(new_manager_fullname)
+
+    is_added = await rq.add_or_update_user(telegram_id=new_manager_telegram_id,
+                                     full_name=new_manager_fullname,
+                                     role="MANAGER")
+
+    if is_added:
+        sent_message = await message.answer(
+            text="Новый менеджер успешно добавлен в систему.",
+            reply_markup=kb.go_to_dashboard
+        )
+    else:
+        sent_message = await message.answer(
+            text="Не удалось добавить менеджера. Пожалуйста, попробуйте снова.",
+            reply_markup=kb.go_to_dashboard
+        )
+
+    user_data['bot_messages'].append(sent_message.message_id)
