@@ -1,0 +1,35 @@
+# Исключаем виртуальное окружение
+venv/
+.env
+
+# Файлы базы данных
+*.sqlite3
+
+# Кеши Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Конфигурации IDE
+.idea/
+.vscode/
+
+# Логи
+logs/
+*.log
+
+# Кэш pip
+pip-wheel-metadata/
+pip-log.txt
+
+# Исключаем node_modules, если вдруг используется
+node_modules/
+
+# Исключаем статические и медиа файлы, если есть в проекте
+staticfiles/
+media/
+
+# Оставляем важные файлы
+!README.md
+!requirements.txt
