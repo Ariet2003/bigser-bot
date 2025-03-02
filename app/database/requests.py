@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Dict
 from sqlalchemy.orm import selectinload
 from sqlalchemy import or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,3 +45,59 @@ async def add_or_update_user(telegram_id: str, full_name: str, role: str) -> boo
     except Exception as e:
         print(f"Ошибка при добавлении/обновлении пользователя: {e}")
         return False
+
+async def get_users_by_role(role: str) -> str:
+    async with async_session() as session:
+        result = await session.execute(
+            select(User.id, User.full_name).where(User.role == role)
+        )
+        users = [{"id": user_id, "full_name": full_name} for user_id, full_name in result.all()]
+        return json.dumps(users, ensure_ascii=False)
+
+async def get_admins_by_page(page: int, per_page: int = 10) -> List[Dict]:
+    async with async_session() as session:
+        query = select(User.id, User.full_name).where(User.role == "ADMIN")\
+                    .limit(per_page).offset((page - 1) * per_page)
+        result = await session.execute(query)
+        admins = [{"id": admin_id, "full_name": full_name} for admin_id, full_name in result.all()]
+        return admins
+
+async def get_total_admins() -> int:
+    async with async_session() as session:
+        query = select(func.count()).select_from(User).where(User.role == "ADMIN")
+        total = await session.scalar(query)
+        return total
+
+async def get_admin_by_id(admin_id: int) -> Optional[Dict]:
+    async with async_session() as session:
+        query = select(User).where(User.id == admin_id)
+        admin = await session.scalar(query)
+        if admin:
+            return {"id": admin.id, "full_name": admin.full_name, "role": admin.role}
+        return None
+
+async def update_admin_fullname(admin_id: int, new_fullname: str) -> bool:
+    async with async_session() as session:
+        try:
+            await session.execute(
+                update(User).where(User.id == admin_id).values(full_name=new_fullname)
+            )
+            await session.commit()
+            return True
+        except Exception as e:
+            print(f"Ошибка при обновлении ФИО: {e}")
+            await session.rollback()
+            return False
+
+async def update_admin_role(admin_id: int, new_role: str) -> bool:
+    async with async_session() as session:
+        try:
+            await session.execute(
+                update(User).where(User.id == admin_id).values(role=new_role)
+            )
+            await session.commit()
+            return True
+        except Exception as e:
+            print(f"Ошибка при обновлении роли: {e}")
+            await session.rollback()
+            return False

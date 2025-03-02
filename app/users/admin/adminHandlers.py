@@ -234,3 +234,128 @@ async def add_manager_third(message: Message, state: FSMContext):
         )
 
     user_data['bot_messages'].append(sent_message.message_id)
+
+
+@router.callback_query(F.data == 'edit_employee')
+async def edit_employee(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    sent_message = await callback_query.message.answer_photo(photo=utils.adminka_png,
+                                                             caption='Выберите, какого сотрудника вы хотите редактировать.',
+                                                             reply_markup=kb.edit_employee)
+
+    user_data['bot_messages'].append(sent_message.message_id)
+
+@router.callback_query(F.data == "edit_admin")
+async def handle_edit_admin(callback_query: CallbackQuery, state: FSMContext):
+    page = 1  # начинаем с первой страницы
+    admins = await rq.get_admins_by_page(page)
+    total = await rq.get_total_admins()
+    has_prev = page > 1
+    has_next = (page * 10) < total
+    markup = kb.create_admin_list_keyboard(admins, page, has_prev, has_next)
+
+    # Если сообщение содержит фотографию, редактируем подпись, иначе – текст
+    if callback_query.message.photo:
+        await callback_query.message.edit_caption(caption="Список администраторов:", reply_markup=markup)
+    else:
+        await callback_query.message.edit_text(text="Список администраторов:", reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("admin_page:"))
+async def handle_admin_pagination(callback_query: CallbackQuery, state: FSMContext):
+    page = int(callback_query.data.split(":")[1])
+    admins = await rq.get_admins_by_page(page)
+    total = await rq.get_total_admins()
+    has_prev = page > 1
+    has_next = (page * 10) < total
+    markup = kb.create_admin_list_keyboard(admins, page, has_prev, has_next)
+    await callback_query.message.edit_text(text="Список администраторов:", reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("admin_detail:"))
+async def handle_admin_detail(callback_query: CallbackQuery, state: FSMContext):
+    admin_id = int(callback_query.data.split(":")[1])
+    admin = await rq.get_admin_by_id(admin_id)
+    if not admin:
+        await callback_query.answer("Администратор не найден.")
+        return
+    text = f"Детали администратора:\nID: {admin['id']}\nФИО: {admin['full_name']}\nРоль: {admin['role']}"
+    markup = kb.admin_detail_keyboard(admin_id)
+
+    # Если сообщение содержит фотографию, изменяем подпись, иначе — текст.
+    if callback_query.message.photo:
+        await callback_query.message.edit_caption(caption=text, reply_markup=markup)
+    else:
+        await callback_query.message.edit_text(text=text, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("edit_admin_fullname:"))
+async def edit_admin_fullname(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    admin_id = int(callback_query.data.split(":")[1])
+    await state.update_data(admin_id=admin_id)
+    sent_message = await callback_query.message.answer("Введите новое ФИО для администратора:")
+    await state.set_state(st.AdminEdit.waiting_for_fullname)
+
+    user_data['bot_messages'].append(sent_message.message_id)
+
+@router.message(st.AdminEdit.waiting_for_fullname)
+async def process_admin_fullname(message: Message, state: FSMContext):
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    data = await state.get_data()
+    admin_id = data.get("admin_id")
+    new_fullname = message.text
+    success = await rq.update_admin_fullname(admin_id, new_fullname)
+    if success:
+        sent_message = await message.answer("ФИО успешно изменено.", reply_markup=kb.go_to_dashboard)
+        user_data['bot_messages'].append(sent_message.message_id)
+    else:
+        sent_message = await message.answer("Ошибка при изменении ФИО.", reply_markup=kb.go_to_dashboard)
+        user_data['bot_messages'].append(sent_message.message_id)
+
+    await state.clear()
+
+
+@router.callback_query(F.data.startswith("edit_admin_role:"))
+async def edit_admin_role(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    admin_id = int(callback_query.data.split(":")[1])
+    await state.update_data(admin_id=admin_id)
+    sent_message = await callback_query.message.answer("Введите новую роль для администратора:")
+    await state.set_state(st.AdminEdit.waiting_for_role)
+    user_data['bot_messages'].append(sent_message.message_id)
+
+@router.message(st.AdminEdit.waiting_for_role)
+async def process_admin_role(message: Message, state: FSMContext):
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    data = await state.get_data()
+    admin_id = data.get("admin_id")
+    new_role = message.text
+    success = await rq.update_admin_role(admin_id, new_role)
+    if success:
+        sent_message = await message.answer("Роль успешно изменена.", reply_markup=kb.go_to_dashboard)
+        user_data['bot_messages'].append(sent_message.message_id)
+    else:
+        sent_message = await message.answer("Ошибка при изменении роли.", reply_markup=kb.go_to_dashboard)
+        user_data['bot_messages'].append(sent_message.message_id)
+    await state.clear()
