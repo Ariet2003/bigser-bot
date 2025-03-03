@@ -774,16 +774,10 @@ async def delete_category_pagination(callback_query: CallbackQuery, state: FSMCo
 
 @router.callback_query(F.data.startswith("delete_category_detail:"))
 async def delete_category_detail(callback_query: CallbackQuery, state: FSMContext):
-    tuid = callback_query.message.chat.id
-    user_data = sent_message_add_screen_ids[tuid]
-    user_data['user_messages'].append(callback_query.message.message_id)
-    await delete_previous_messages(callback_query.message, tuid)
-
     category_id = int(callback_query.data.split(":")[1])
     category = await rq.get_category_by_id(category_id)
     if not category:
-        sent_message = await callback_query.message.answer("Категория не найдена.")
-        user_data['bot_messages'].append(sent_message.message_id)
+        await callback_query.message.answer("Категория не найдена.")
         return
     text = (
         f"Вы действительно хотите удалить категорию?\n\n"
@@ -814,6 +808,308 @@ async def confirm_delete_category(callback_query: CallbackQuery, state: FSMConte
             user_data['bot_messages'].append(sent_message.message_id)
         else:
             sent_message = await callback_query.message.answer("Ошибка при удалении категории.", reply_markup=kb.go_to_dashboard)
+            user_data['bot_messages'].append(sent_message.message_id)
+    else:
+        sent_message = await callback_query.message.answer("Удаление отменено.", reply_markup=kb.go_to_dashboard)
+        user_data['bot_messages'].append(sent_message.message_id)
+
+
+@router.callback_query(F.data == "manage_subcategories")
+async def subcategories_menu(callback_query: CallbackQuery, state: FSMContext):
+    """
+    Отправляет сообщение с фото и клавиатурой с вариантами:
+    - Редактировать подкатегории
+    - Добавить подкатегорию
+    - Удалить подкатегорию
+    - ⬅️ Назад
+    """
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    sent_message = await callback_query.message.answer_photo(
+        photo=utils.adminka_png,
+        caption="Выберите нужное действие с подкатегориями:",
+        reply_markup=kb.subcategories_button
+    )
+    user_data['bot_messages'].append(sent_message.message_id)
+
+
+@router.callback_query(F.data == "edit_subcategories")
+async def edit_subcategories(callback_query: CallbackQuery, state: FSMContext):
+    """
+    Выводит список подкатегорий для редактирования с пагинацией.
+    """
+    page = 1
+    subcategories = await rq.get_subcategories_by_page(page)
+    total = await rq.get_total_subcategories()
+    has_prev = page > 1
+    has_next = (page * 10) < total
+    markup = kb.create_subcategory_list_keyboard(subcategories, page, has_prev, has_next)
+    text = "Список подкатегорий:"
+    if callback_query.message.photo:
+        await callback_query.message.edit_caption(caption=text, reply_markup=markup)
+    else:
+        await callback_query.message.edit_text(text=text, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("subcategory_page:"))
+async def subcategory_pagination(callback_query: CallbackQuery, state: FSMContext):
+    """
+    Обработчик пагинации списка подкатегорий.
+    Callback_data: "subcategory_page:{page}"
+    """
+    page = int(callback_query.data.split(":")[1])
+    subcategories = await rq.get_subcategories_by_page(page)
+    total = await rq.get_total_subcategories()
+    has_prev = page > 1
+    has_next = (page * 10) < total
+    markup = kb.create_subcategory_list_keyboard(subcategories, page, has_prev, has_next)
+    text = "Список подкатегорий:"
+    if callback_query.message.photo:
+        await callback_query.message.edit_caption(caption=text, reply_markup=markup)
+    else:
+        await callback_query.message.edit_text(text=text, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("subcategory_detail:"))
+async def subcategory_detail(callback_query: CallbackQuery, state: FSMContext):
+    """
+    При выборе подкатегории выводит её подробности.
+    Callback_data: "subcategory_detail:{subcategory_id}"
+    """
+    subcategory_id = int(callback_query.data.split(":")[1])
+    subcat = await rq.get_subcategory_by_id(subcategory_id)
+    if not subcat:
+        await callback_query.message.answer("Подкатегория не найдена.")
+        return
+    text = (
+        f"Детали подкатегории:\n"
+        f"ID: {subcat['id']}\nНазвание: {subcat['name']}\n"
+        f"Категория: {subcat['category_name']}"
+    )
+    markup = kb.subcategory_detail_keyboard(subcategory_id)
+    if callback_query.message.photo:
+        await callback_query.message.edit_caption(caption=text, reply_markup=markup)
+    else:
+        await callback_query.message.edit_text(text=text, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("edit_subcategory:"))
+async def edit_subcategory(callback_query: CallbackQuery, state: FSMContext):
+    """
+    Запускает процесс редактирования подкатегории.
+    Сохраняет id подкатегории и запрашивает новое название (опционально).
+    Callback_data: "edit_subcategory:{subcategory_id}"
+    """
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    subcategory_id = int(callback_query.data.split(":")[1])
+    await state.update_data(subcategory_id=subcategory_id)
+    sent_message = await callback_query.message.answer("Введите новое название подкатегории (оставьте пустым, если не меняете):")
+    user_data['bot_messages'].append(sent_message.message_id)
+    await state.set_state(st.SubcategoryEdit.waiting_for_new_name)
+
+
+@router.message(st.SubcategoryEdit.waiting_for_new_name)
+async def process_subcategory_new_name(message: Message, state: FSMContext):
+    """
+    Сохраняет новое название и запрашивает выбор родительской категории (с пагинацией).
+    """
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    new_name = message.text.strip()
+    await state.update_data(new_name=new_name)
+    # Вывод списка категорий для выбора родительской
+    page = 1
+    categories = await rq.get_categories_by_page(page)
+    total = await rq.get_total_categories()
+    has_prev = page > 1
+    has_next = (page * 10) < total
+    markup = kb.create_parent_category_keyboard(categories, page, has_prev, has_next)
+    sent_message = await message.answer("Выберите родительскую категорию для подкатегории:", reply_markup=markup)
+    await state.set_state(st.SubcategoryEdit.waiting_for_parent_category)
+    user_data['bot_messages'].append(sent_message.message_id)
+
+
+@router.callback_query(F.data.startswith("parent_category:"))
+async def parent_category_selected(callback_query: CallbackQuery, state: FSMContext):
+    """
+    Сохраняет выбранную родительскую категорию и выполняет обновление подкатегории.
+    Callback_data: "parent_category:{category_id}"
+    """
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    parent_category_id = int(callback_query.data.split(":")[1])
+    await state.update_data(parent_category_id=parent_category_id)
+    data = await state.get_data()
+    subcategory_id = data.get("subcategory_id")
+    new_name = data.get("new_name")
+    success = await rq.update_subcategory(subcategory_id, new_name, parent_category_id)
+    if success:
+        sent_message = await callback_query.message.answer("Подкатегория успешно изменена.", reply_markup=kb.go_to_dashboard)
+        user_data['bot_messages'].append(sent_message.message_id)
+    else:
+        sent_message = await callback_query.message.answer("Ошибка при изменении подкатегории.", reply_markup=kb.go_to_dashboard)
+        user_data['bot_messages'].append(sent_message.message_id)
+    await state.clear()
+
+
+@router.callback_query(F.data == "add_subcategory")
+async def add_subcategory(callback_query: CallbackQuery, state: FSMContext):
+    """
+    Запускает процесс добавления новой подкатегории.
+    """
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    sent_message = await callback_query.message.answer("Введите название новой подкатегории:", reply_markup=kb.go_to_dashboard)
+    user_data['bot_messages'].append(sent_message.message_id)
+    await state.set_state(st.SubcategoryAdd.waiting_for_name)
+
+
+@router.message(st.SubcategoryAdd.waiting_for_name)
+async def process_subcategory_add_name(message: Message, state: FSMContext):
+    """
+    Сохраняет название новой подкатегории и запрашивает выбор родительской категории.
+    """
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    new_name = message.text.strip()
+    await state.update_data(new_name=new_name)
+    page = 1
+    categories = await rq.get_categories_by_page(page)
+    total = await rq.get_total_categories()
+    has_prev = page > 1
+    has_next = (page * 10) < total
+    markup = kb.create_parent_category_keyboard_add(categories, page, has_prev, has_next)
+    sent_message = await message.answer("Выберите родительскую категорию для новой подкатегории:", reply_markup=markup)
+    await state.set_state(st.SubcategoryAdd.waiting_for_parent_category)
+    user_data['bot_messages'].append(sent_message.message_id)
+
+
+@router.callback_query(F.data.startswith("parent_category_add:"))
+async def parent_category_add(callback_query: CallbackQuery, state: FSMContext):
+    """
+    Сохраняет выбранную категорию и создает новую подкатегорию.
+    Callback_data: "parent_category_add:{category_id}"
+    """
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    parent_category_id = int(callback_query.data.split(":")[1])
+    await state.update_data(parent_category_id=parent_category_id)
+    data = await state.get_data()
+    new_name = data.get("new_name")
+    success = await rq.add_subcategory(new_name, parent_category_id)
+    if success:
+        sent_message = await callback_query.message.answer("Новая подкатегория успешно добавлена.", reply_markup=kb.go_to_dashboard)
+        user_data['bot_messages'].append(sent_message.message_id)
+    else:
+        sent_message = await callback_query.message.answer("Ошибка при добавлении подкатегории.", reply_markup=kb.go_to_dashboard)
+        user_data['bot_messages'].append(sent_message.message_id)
+    await state.clear()
+
+
+@router.callback_query(F.data == "delete_subcategory")
+async def delete_subcategory_menu(callback_query: CallbackQuery, state: FSMContext):
+    """
+    Выводит список подкатегорий для удаления с пагинацией.
+    """
+    page = 1
+    subcategories = await rq.get_subcategories_by_page(page)
+    total = await rq.get_total_subcategories()
+    has_prev = page > 1
+    has_next = (page * 10) < total
+    markup = kb.create_delete_subcategory_list_keyboard(subcategories, page, has_prev, has_next)
+    text = "Список подкатегорий для удаления:"
+    if callback_query.message.photo:
+        await callback_query.message.edit_caption(caption=text, reply_markup=markup)
+    else:
+        await callback_query.message.edit_text(text=text, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("delete_subcategory_page:"))
+async def delete_subcategory_pagination(callback_query: CallbackQuery, state: FSMContext):
+    """
+    Обработчик пагинации для удаления подкатегорий.
+    Callback_data: "delete_subcategory_page:{page}"
+    """
+    page = int(callback_query.data.split(":")[1])
+    subcategories = await rq.get_subcategories_by_page(page)
+    total = await rq.get_total_subcategories()
+    has_prev = page > 1
+    has_next = (page * 10) < total
+    markup = kb.create_delete_subcategory_list_keyboard(subcategories, page, has_prev, has_next)
+    text = "Список подкатегорий для удаления:"
+    if callback_query.message.photo:
+        await callback_query.message.edit_caption(caption=text, reply_markup=markup)
+    else:
+        await callback_query.message.edit_text(text=text, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("delete_subcategory_detail:"))
+async def delete_subcategory_detail(callback_query: CallbackQuery, state: FSMContext):
+    """
+    При выборе подкатегории для удаления выводит подтверждение.
+    Callback_data: "delete_subcategory_detail:{subcategory_id}"
+    """
+
+    subcategory_id = int(callback_query.data.split(":")[1])
+    subcat = await rq.get_subcategory_by_id(subcategory_id)
+    if not subcat:
+        await callback_query.message.answer("Подкатегория не найдена.")
+        return
+    text = (
+        f"Вы действительно хотите удалить подкатегорию?\n\n"
+        f"ID: {subcat['id']}\nНазвание: {subcat['name']}\n"
+        f"Родительская категория: {subcat['category_name']}\n\n"
+        "Внимание: При удалении данные будут безвозвратно утрачены!"
+    )
+    markup = kb.confirm_delete_subcategory_keyboard(subcategory_id)
+    if callback_query.message.photo:
+        await callback_query.message.edit_caption(caption=text, reply_markup=markup)
+    else:
+        await callback_query.message.edit_text(text=text, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("confirm_delete_subcategory:"))
+async def confirm_delete_subcategory(callback_query: CallbackQuery, state: FSMContext):
+    """
+    Обрабатывает подтверждение удаления подкатегории.
+    Callback_data: "confirm_delete_subcategory:{subcategory_id}:{confirm}"
+    """
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+    parts = callback_query.data.split(":")
+    subcategory_id = int(parts[1])
+    confirm = parts[2]
+    if confirm == "yes":
+        success = await rq.delete_subcategory(subcategory_id)
+        if success:
+            sent_message = await callback_query.message.answer("Подкатегория успешно удалена.", reply_markup=kb.go_to_dashboard)
+            user_data['bot_messages'].append(sent_message.message_id)
+        else:
+            sent_message = await callback_query.message.answer("Ошибка при удалении подкатегории.", reply_markup=kb.go_to_dashboard)
             user_data['bot_messages'].append(sent_message.message_id)
     else:
         sent_message = await callback_query.message.answer("Удаление отменено.", reply_markup=kb.go_to_dashboard)

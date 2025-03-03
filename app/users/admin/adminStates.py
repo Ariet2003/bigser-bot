@@ -31,3 +31,13 @@ class CategoryEdit(StatesGroup):
 
 class CategoryAdd(StatesGroup):
     waiting_for_category_name = State()
+
+
+class SubcategoryEdit(StatesGroup):
+    waiting_for_new_name = State()
+    waiting_for_parent_category = State()
+
+
+class SubcategoryAdd(StatesGroup):
+    waiting_for_name = State()
+    waiting_for_parent_category = State()

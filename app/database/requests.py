@@ -228,3 +228,78 @@ async def delete_category(category_id: int) -> bool:
             print(f"Ошибка при удалении категории: {e}")
             await session.rollback()
             return False
+
+
+async def get_subcategories_by_page(page: int, per_page: int = 10) -> List[Dict]:
+    async with async_session() as session:
+        query = (
+            select(Subcategory.id, Subcategory.name, Category.name)
+            .join(Category, Subcategory.category_id == Category.id)
+            .limit(per_page)
+            .offset((page - 1) * per_page)
+        )
+        result = await session.execute(query)
+        subcategories = [
+            {"id": s_id, "name": s_name, "category_name": cat_name}
+            for s_id, s_name, cat_name in result.all()
+        ]
+        return subcategories
+
+async def get_total_subcategories() -> int:
+    async with async_session() as session:
+        query = select(func.count()).select_from(Subcategory)
+        total = await session.scalar(query)
+        return total
+
+async def get_subcategory_by_id(subcategory_id: int) -> Optional[Dict]:
+    async with async_session() as session:
+        query = (
+            select(Subcategory, Category.name)
+            .join(Category, Subcategory.category_id == Category.id)
+            .where(Subcategory.id == subcategory_id)
+        )
+        result = await session.execute(query)
+        row = result.first()
+        if row:
+            subcat, cat_name = row
+            return {"id": subcat.id, "name": subcat.name, "category_id": subcat.category_id, "category_name": cat_name}
+        return None
+
+async def update_subcategory(subcategory_id: int, new_name: str, parent_category_id: int) -> bool:
+    async with async_session() as session:
+        try:
+            values = {"category_id": parent_category_id}
+            if new_name:
+                values["name"] = new_name
+            await session.execute(
+                update(Subcategory).where(Subcategory.id == subcategory_id).values(**values)
+            )
+            await session.commit()
+            return True
+        except Exception as e:
+            print(f"Ошибка при обновлении подкатегории: {e}")
+            await session.rollback()
+            return False
+
+async def add_subcategory(name: str, parent_category_id: int) -> bool:
+    async with async_session() as session:
+        try:
+            new_subcat = Subcategory(name=name, category_id=parent_category_id)
+            session.add(new_subcat)
+            await session.commit()
+            return True
+        except Exception as e:
+            print(f"Ошибка при добавлении подкатегории: {e}")
+            await session.rollback()
+            return False
+
+async def delete_subcategory(subcategory_id: int) -> bool:
+    async with async_session() as session:
+        try:
+            await session.execute(delete(Subcategory).where(Subcategory.id == subcategory_id))
+            await session.commit()
+            return True
+        except Exception as e:
+            print(f"Ошибка при удалении подкатегории: {e}")
+            await session.rollback()
+            return False

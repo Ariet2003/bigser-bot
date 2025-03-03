@@ -237,3 +237,114 @@ def confirm_delete_category_keyboard(category_id: int) -> InlineKeyboardMarkup:
         ]
     ])
     return markup
+
+
+
+# Клавиатура для раздела "Подкатегории"
+subcategories_button = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="Редактировать подкатегории", callback_data="edit_subcategories")],
+    [InlineKeyboardButton(text="Добавить подкатегорию", callback_data="add_subcategory")],
+    [InlineKeyboardButton(text="Удалить подкатегорию", callback_data="delete_subcategory")],
+    [InlineKeyboardButton(text="⬅️ Назад", callback_data="go_to_dashboard")]
+])
+
+def create_subcategory_list_keyboard(subcategories: list, page: int, has_prev: bool, has_next: bool) -> InlineKeyboardMarkup:
+    """
+    Формирует клавиатуру для вывода списка подкатегорий с пагинацией.
+    Callback_data каждой кнопки: "subcategory_detail:{subcategory_id}"
+    """
+    markup = InlineKeyboardMarkup(inline_keyboard=[])
+    for subcat in subcategories:
+        button = InlineKeyboardButton(
+            text=subcat['name'],
+            callback_data=f"subcategory_detail:{subcat['id']}"
+        )
+        markup.inline_keyboard.append([button])
+    pagination_buttons = []
+    if has_prev:
+        pagination_buttons.append(InlineKeyboardButton(text="⬅️ Предыдущая", callback_data=f"subcategory_page:{page-1}"))
+    if has_next:
+        pagination_buttons.append(InlineKeyboardButton(text="Следующая ➡️", callback_data=f"subcategory_page:{page+1}"))
+    if pagination_buttons:
+        markup.inline_keyboard.append(pagination_buttons)
+    return markup
+
+def subcategory_detail_keyboard(subcategory_id: int) -> InlineKeyboardMarkup:
+    """
+    Клавиатура для деталей подкатегории: редактирование, удаление, возврат.
+    """
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Редактировать", callback_data=f"edit_subcategory:{subcategory_id}")],
+        [InlineKeyboardButton(text="Удалить", callback_data=f"delete_subcategory_detail:{subcategory_id}")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="edit_subcategories")]
+    ])
+    return markup
+
+def create_delete_subcategory_list_keyboard(subcategories: list, page: int, has_prev: bool, has_next: bool) -> InlineKeyboardMarkup:
+    """
+    Клавиатура для списка подкатегорий при удалении.
+    Callback_data каждой кнопки: "delete_subcategory_detail:{subcategory_id}"
+    """
+    markup = InlineKeyboardMarkup(inline_keyboard=[])
+    for subcat in subcategories:
+        button = InlineKeyboardButton(
+            text=subcat['name'],
+            callback_data=f"delete_subcategory_detail:{subcat['id']}"
+        )
+        markup.inline_keyboard.append([button])
+    pagination_buttons = []
+    if has_prev:
+        pagination_buttons.append(InlineKeyboardButton(text="⬅️ Предыдущая", callback_data=f"delete_subcategory_page:{page-1}"))
+    if has_next:
+        pagination_buttons.append(InlineKeyboardButton(text="Следующая ➡️", callback_data=f"delete_subcategory_page:{page+1}"))
+    if pagination_buttons:
+        markup.inline_keyboard.append(pagination_buttons)
+    return markup
+
+def confirm_delete_subcategory_keyboard(subcategory_id: int) -> InlineKeyboardMarkup:
+    """
+    Клавиатура для подтверждения удаления подкатегории.
+    """
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="Да, удалить", callback_data=f"confirm_delete_subcategory:{subcategory_id}:yes"),
+            InlineKeyboardButton(text="Отмена", callback_data=f"confirm_delete_subcategory:{subcategory_id}:no")
+        ]
+    ])
+    return markup
+
+def create_parent_category_keyboard(categories: list, page: int, has_prev: bool, has_next: bool) -> InlineKeyboardMarkup:
+    """
+    Клавиатура для выбора родительской категории при редактировании подкатегории.
+    Callback_data: "parent_category:{category_id}"
+    """
+    markup = InlineKeyboardMarkup(inline_keyboard=[])
+    for cat in categories:
+        button = InlineKeyboardButton(text=cat['name'], callback_data=f"parent_category:{cat['id']}")
+        markup.inline_keyboard.append([button])
+    pagination_buttons = []
+    if has_prev:
+        pagination_buttons.append(InlineKeyboardButton(text="⬅️ Предыдущая", callback_data=f"parent_category_page:{page-1}"))
+    if has_next:
+        pagination_buttons.append(InlineKeyboardButton(text="Следующая ➡️", callback_data=f"parent_category_page:{page+1}"))
+    if pagination_buttons:
+        markup.inline_keyboard.append(pagination_buttons)
+    return markup
+
+def create_parent_category_keyboard_add(categories: list, page: int, has_prev: bool, has_next: bool) -> InlineKeyboardMarkup:
+    """
+    Клавиатура для выбора родительской категории при добавлении подкатегории.
+    Callback_data: "parent_category_add:{category_id}"
+    """
+    markup = InlineKeyboardMarkup(inline_keyboard=[])
+    for cat in categories:
+        button = InlineKeyboardButton(text=cat['name'], callback_data=f"parent_category_add:{cat['id']}")
+        markup.inline_keyboard.append([button])
+    pagination_buttons = []
+    if has_prev:
+        pagination_buttons.append(InlineKeyboardButton(text="⬅️ Предыдущая", callback_data=f"parent_category_add_page:{page-1}"))
+    if has_next:
+        pagination_buttons.append(InlineKeyboardButton(text="Следующая ➡️", callback_data=f"parent_category_add_page:{page+1}"))
+    if pagination_buttons:
+        markup.inline_keyboard.append(pagination_buttons)
+    return markup
