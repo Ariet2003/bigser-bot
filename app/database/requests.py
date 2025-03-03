@@ -170,3 +170,61 @@ async def delete_user_by_id(user_id: int) -> bool:
             print(f"Ошибка при удалении сотрудника: {e}")
             await session.rollback()
             return False
+
+
+async def get_categories_by_page(page: int, per_page: int = 10) -> List[Dict]:
+    async with async_session() as session:
+        query = select(Category.id, Category.name).limit(per_page).offset((page - 1) * per_page)
+        result = await session.execute(query)
+        categories = [{"id": cat_id, "name": name} for cat_id, name in result.all()]
+        return categories
+
+async def get_total_categories() -> int:
+    async with async_session() as session:
+        query = select(func.count()).select_from(Category)
+        total = await session.scalar(query)
+        return total
+
+async def get_category_by_id(category_id: int) -> Optional[Dict]:
+    async with async_session() as session:
+        query = select(Category).where(Category.id == category_id)
+        category = await session.scalar(query)
+        if category:
+            return {"id": category.id, "name": category.name}
+        return None
+
+async def update_category_name(category_id: int, new_name: str) -> bool:
+    async with async_session() as session:
+        try:
+            await session.execute(
+                update(Category).where(Category.id == category_id).values(name=new_name)
+            )
+            await session.commit()
+            return True
+        except Exception as e:
+            print(f"Ошибка при обновлении названия категории: {e}")
+            await session.rollback()
+            return False
+
+async def add_category(name: str) -> bool:
+    async with async_session() as session:
+        try:
+            new_category = Category(name=name)
+            session.add(new_category)
+            await session.commit()
+            return True
+        except Exception as e:
+            print(f"Ошибка при добавлении категории: {e}")
+            await session.rollback()
+            return False
+
+async def delete_category(category_id: int) -> bool:
+    async with async_session() as session:
+        try:
+            await session.execute(delete(Category).where(Category.id == category_id))
+            await session.commit()
+            return True
+        except Exception as e:
+            print(f"Ошибка при удалении категории: {e}")
+            await session.rollback()
+            return False

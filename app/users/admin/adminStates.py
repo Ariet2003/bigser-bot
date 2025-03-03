@@ -23,3 +23,11 @@ class ManagerEdit(StatesGroup):
 
 class DeleteEmployeeStates(StatesGroup):
     waiting_for_confirmation = State()
+
+
+class CategoryEdit(StatesGroup):
+    waiting_for_new_name = State()
+
+
+class CategoryAdd(StatesGroup):
+    waiting_for_category_name = State()

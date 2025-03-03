@@ -39,7 +39,7 @@ def create_admin_list_keyboard(admins: list, page: int, has_prev: bool, has_next
     # Добавляем кнопки для каждого администратора (каждая кнопка в новой строке)
     for admin in admins:
         button = InlineKeyboardButton(
-            text=f"ID: {admin['id']}, {admin['full_name']}",
+            text=f"{admin['full_name']}",
             callback_data=f"admin_detail:{admin['id']}"
         )
         markup.inline_keyboard.append([button])
@@ -76,7 +76,7 @@ def create_manager_list_keyboard(managers: list, page: int, has_prev: bool, has_
     # Добавляем кнопки для каждого администратора (каждая кнопка в новой строке)
     for manager in managers:
         button = InlineKeyboardButton(
-            text=f"ID: {manager['id']}, {manager['full_name']}",
+            text=f"{manager['full_name']}",
             callback_data=f"admin_detail:{manager['id']}"
         )
         markup.inline_keyboard.append([button])
@@ -124,7 +124,7 @@ def create_delete_list_keyboard(employees: list, page: int, has_prev: bool, has_
     markup = InlineKeyboardMarkup(inline_keyboard=[])
     for employee in employees:
         button = InlineKeyboardButton(
-            text=f"ID: {employee['id']}, {employee['full_name']}",
+            text=f"{employee['full_name']}",
             callback_data=f"delete_detail:{role}:{employee['id']}"
         )
         markup.inline_keyboard.append([button])
@@ -163,3 +163,77 @@ manage_products_keyboard = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="📦 Товары", callback_data='manage_one_product')],
     [InlineKeyboardButton(text="⬅️ В личный кабинет", callback_data='go_to_dashboard')]
 ])
+
+
+# Клавиатура для раздела "Категории"
+categories_button = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="Редактировать категории", callback_data="edit_categories")],
+    [InlineKeyboardButton(text="Добавить категорию", callback_data="add_category")],
+    [InlineKeyboardButton(text="Удалить категорию", callback_data="delete_category")],
+    [InlineKeyboardButton(text="⬅️ Назад", callback_data="go_to_dashboard")]
+])
+
+def create_category_list_keyboard(categories: list, page: int, has_prev: bool, has_next: bool) -> InlineKeyboardMarkup:
+    """
+    Создаёт клавиатуру для отображения списка категорий с пагинацией.
+    Каждая кнопка возвращает callback_data формата "category_detail:{category_id}"
+    """
+    markup = InlineKeyboardMarkup(inline_keyboard=[])
+    for category in categories:
+        button = InlineKeyboardButton(
+            text=f"{category['name']}",
+            callback_data=f"category_detail:{category['id']}"
+        )
+        markup.inline_keyboard.append([button])
+    pagination_buttons = []
+    if has_prev:
+        pagination_buttons.append(InlineKeyboardButton(text="⬅️ Предыдущая", callback_data=f"category_page:{page-1}"))
+    if has_next:
+        pagination_buttons.append(InlineKeyboardButton(text="Следующая ➡️", callback_data=f"category_page:{page+1}"))
+    if pagination_buttons:
+        markup.inline_keyboard.append(pagination_buttons)
+    return markup
+
+def category_detail_keyboard(category_id: int) -> InlineKeyboardMarkup:
+    """
+    Клавиатура для деталей категории: редактирование, удаление, возврат к списку.
+    """
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Редактировать", callback_data=f"edit_category:{category_id}")],
+        [InlineKeyboardButton(text="Удалить", callback_data=f"delete_category_detail:{category_id}")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="edit_categories")]
+    ])
+    return markup
+
+def create_delete_category_list_keyboard(categories: list, page: int, has_prev: bool, has_next: bool) -> InlineKeyboardMarkup:
+    """
+    Клавиатура для списка категорий при удалении.
+    Callback_data каждой кнопки: "delete_category_detail:{category_id}"
+    """
+    markup = InlineKeyboardMarkup(inline_keyboard=[])
+    for category in categories:
+        button = InlineKeyboardButton(
+            text=f"{category['name']}",
+            callback_data=f"delete_category_detail:{category['id']}"
+        )
+        markup.inline_keyboard.append([button])
+    pagination_buttons = []
+    if has_prev:
+        pagination_buttons.append(InlineKeyboardButton(text="⬅️ Предыдущая", callback_data=f"delete_category_page:{page-1}"))
+    if has_next:
+        pagination_buttons.append(InlineKeyboardButton(text="Следующая ➡️", callback_data=f"delete_category_page:{page+1}"))
+    if pagination_buttons:
+        markup.inline_keyboard.append(pagination_buttons)
+    return markup
+
+def confirm_delete_category_keyboard(category_id: int) -> InlineKeyboardMarkup:
+    """
+    Клавиатура для подтверждения удаления категории.
+    """
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="Да, удалить", callback_data=f"confirm_delete_category:{category_id}:yes"),
+            InlineKeyboardButton(text="Отмена", callback_data=f"confirm_delete_category:{category_id}:no")
+        ]
+    ])
+    return markup
