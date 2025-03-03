@@ -506,10 +506,6 @@ async def delete_admin(callback_query: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "delete_manager")
 async def delete_manager(callback_query: CallbackQuery, state: FSMContext):
-    """
-    Обработчик выбора удаления менеджера.
-    Выводит список менеджеров с пагинацией.
-    """
     page = 1
     managers = await rq.get_managers_by_page(page)
     total = await rq.get_total_managers()
@@ -602,3 +598,19 @@ async def confirm_delete(callback_query: CallbackQuery, state: FSMContext):
         sent_message = await callback_query.message.answer("Удаление отменено.", reply_markup=kb.go_to_dashboard)
         user_data['bot_messages'].append(sent_message.message_id)
 
+
+
+@router.callback_query(F.data == 'manage_products')
+async def manage_products(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    sent_message = await callback_query.message.answer_photo(
+        photo=utils.adminka_png,
+        caption="Выберите нужное вам действие.",
+        reply_markup=kb.manage_products_keyboard
+    )
+
+    user_data['bot_messages'].append(sent_message.message_id)
