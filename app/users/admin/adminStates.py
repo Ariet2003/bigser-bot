@@ -41,3 +41,7 @@ class SubcategoryEdit(StatesGroup):
 class SubcategoryAdd(StatesGroup):
     waiting_for_name = State()
     waiting_for_parent_category = State()
+
+
+class ProductEdit(StatesGroup):
+    waiting_for_excel_file = State()

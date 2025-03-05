@@ -5,15 +5,18 @@ from aiogram.enums import ParseMode
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
 from aiogram.filters import CommandStart, Command
 from aiogram import F, Router
+from aiogram.types.input_file import BufferedInputFile
 
 from app.users.admin import adminKeyboards as kb
 from app.users.admin import adminStates as st
 from app import utils
 from app.database import requests as rq
 from aiogram.fsm.context import FSMContext
-
+from aiogram.types import InputFile
 from app.utils import sent_message_add_screen_ids, router
 from app import utils
+from io import BytesIO
+from openpyxl import Workbook, load_workbook
 
 
 # Function to delete previous messages
@@ -1126,9 +1129,302 @@ async def products_menu(callback_query: CallbackQuery, state: FSMContext):
 
     sent_message = await callback_query.message.answer_photo(
         photo=utils.adminka_png,
-        caption="Выберите нужное действие с товарами:",
+        caption="Если нужно внести изменения в товары, скачай файл, внесите необходимые добавления, изменения или "
+                "удаления, затем отправь файл обратно для обновления товаров.",
         reply_markup=kb.product_menu_keyboard
     )
     user_data["bot_messages"].append(sent_message.message_id)
+
+
+# Обработчик для экспорта данных о товарах в Excel
+@router.callback_query(F.data == "edit_product")
+async def edit_product_handler(callback_query: CallbackQuery, state: FSMContext):
+    """
+    При нажатии на кнопку "Редактировать товар" бот:
+    1. Получает данные о товарах, цветах, размерах и подкатегориях из БД.
+    2. Формирует Excel-файл с четырьмя вкладками:
+       - "Товары": данные о товарах.
+       - "Цвета": справочные данные по цветам.
+       - "Размер": справочные данные по размерам.
+       - "Подкатегория": список подкатегорий с информацией о родительской категории.
+    3. Отправляет файл пользователю с инструкцией для редактирования.
+    """
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    # Получаем данные из БД
+    products = await rq.get_all_products()
+    colors = await rq.get_all_colors()
+    sizes = await rq.get_all_sizes()
+    subcategories = await rq.get_all_subcategories()
+
+    # Создаем Excel-файл с вкладками
+    wb = Workbook()
+    # Вкладка "Товары"
+    ws_products = wb.active
+    ws_products.title = "Товары"
+    headers = ["ID", "Название", "Цена", "Цветы", "Размеры", "Описание", "Тип продукта", "Материал", "Особенности",
+               "Использование", "Температурный диапазон", "ID подкатегории"]
+    ws_products.append(headers)
+    for product in products:
+        row = [
+            product.get("id"),
+            product.get("name"),
+            product.get("price"),
+            ", ".join(map(str, product.get("color_ids", []))) if product.get("color_ids") else "",
+            ", ".join(map(str, product.get("size_ids", []))) if product.get("size_ids") else "",
+            product.get("description"),
+            product.get("product_type"),
+            product.get("material"),
+            product.get("features"),
+            product.get("usage"),
+            product.get("temperature_range"),
+            product.get("subcategory_id")
+        ]
+        ws_products.append(row)
+
+    # Вкладка "Цвета"
+    ws_colors = wb.create_sheet("Цвета")
+    ws_colors.append(["ID", "Название"])
+    for color in colors:
+        ws_colors.append([color.get("id"), color.get("name")])
+
+    # Вкладка "Размер"
+    ws_sizes = wb.create_sheet("Размер")
+    ws_sizes.append(["ID", "Размер"])
+    for size in sizes:
+        ws_sizes.append([size.get("id"), size.get("size")])
+
+    # Вкладка "Подкатегория"
+    ws_subcat = wb.create_sheet("Подкатегория")
+    ws_subcat.append(["ID", "Название", "ID родительской категории", "Название родительской категории"])
+    for subcat in subcategories:
+        ws_subcat.append([
+            subcat.get("id"),
+            subcat.get("name"),
+            subcat.get("category_id"),
+            subcat.get("category_name")
+        ])
+
+    # Сохраняем книгу в память
+    file_stream = BytesIO()
+    wb.save(file_stream)
+    file_stream.seek(0)
+
+    # Создаем объект BufferedInputFile, передавая байты файла и имя
+    input_file = BufferedInputFile(file_stream.getvalue(), filename="products.xlsx")
+
+    caption_text = (
+        "Скачайте таблицу для редактирования товаров.\n\n"
+        "Вкладка 'Товары' содержит данные о товарах.\n"
+        "Вкладки 'Цвета', 'Размер' и 'Подкатегория' предоставляют справочную информацию.\n\n"
+        "После редактирования отправьте файл боту для обновления данных.\n\n"
+        "Если хотите отменить обновление, отправьте '-' вместо файла."
+    )
+
+    sent_message = await callback_query.message.answer_document(
+        document=input_file,
+        caption=caption_text
+    )
+    user_data['bot_messages'].append(sent_message.message_id)
+
+    # Переводим бота в состояние ожидания измененного Excel-файла
+    await state.set_state(st.ProductEdit.waiting_for_excel_file.state)
+
+
+# Новый обработчик для отмены обновления, если пользователь отправляет '-' вместо файла
+@router.message(st.ProductEdit.waiting_for_excel_file, F.text)
+async def cancel_excel_update(message: Message, state: FSMContext):
+    if message.text.strip() == "-":
+        await state.clear()
+        await admin_account(message, state)
+        return
+
+
+# Обработчик для получения отредактированного Excel‑файла с товарами
+@router.message(st.ProductEdit.waiting_for_excel_file, F.document)
+async def process_edited_products(message: Message, state: FSMContext):
+    """
+    Обрабатывает полученный от пользователя Excel‑файл с измененными данными о товарах.
+    Считывает лист "Товары" и для каждой строки:
+      - Если указан ID и товар существует, обновляет данные (только если они изменились).
+      - Если ID отсутствует или некорректен, добавляет новый товар.
+    После обработки удаляет товары, которые отсутствуют в файле.
+    По окончании отправляет результат операции.
+    """
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    # Загружаем документ в память
+    file_stream = BytesIO()
+    bot = message.bot
+    file_id = message.document.file_id
+    file_info = await bot.get_file(file_id)
+    await bot.download_file(file_info.file_path, destination=file_stream)
+    file_stream.seek(0)
+
+    try:
+        wb = load_workbook(filename=file_stream, data_only=True)
+    except Exception as e:
+        sent_message = await message.answer(f"Ошибка при открытии файла: {e}",
+                                            reply_markup=kb.go_to_dashboard)
+        user_data['bot_messages'].append(sent_message.message_id)
+        return
+
+    if "Товары" not in wb.sheetnames:
+        sent_message = await message.answer("В файле отсутствует вкладка 'Товары'. Проверьте файл и попробуйте снова.",
+                                            reply_markup=kb.go_to_dashboard)
+        user_data['bot_messages'].append(sent_message.message_id)
+        return
+
+    ws = wb["Товары"]
+    rows = list(ws.rows)
+    if not rows or len(rows) < 2:
+        sent_message = await message.answer("Файл не содержит данных для обработки.",
+                                            reply_markup=kb.go_to_dashboard)
+        user_data['bot_messages'].append(sent_message.message_id)
+        return
+
+    # Получаем заголовки из первой строки
+    headers = [cell.value for cell in rows[0]]
+    header_map = {header: idx for idx, header in enumerate(headers) if header is not None}
+    required_headers = ["ID", "Название", "Цена", "Цветы", "Размеры", "Описание", "Тип продукта",
+                        "Материал", "Особенности", "Использование", "Температурный диапазон", "ID подкатегории"]
+    for rh in required_headers:
+        if rh not in header_map:
+            sent_message = await message.answer(f"В файле отсутствует обязательный столбец: {rh}",
+                                                reply_markup=kb.go_to_dashboard)
+            user_data['bot_messages'].append(sent_message.message_id)
+            return
+
+    updated_count = 0
+    added_count = 0
+    deleted_count = 0
+
+    # Вспомогательная функция для парсинга списков ID из строки
+    def parse_ids(value):
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [int(x.strip()) for x in value.split(",") if x.strip().isdigit()]
+        if isinstance(value, (int, float)):
+            return [int(value)]
+        return []
+
+    # Вспомогательная функция для сравнения текущих данных товара с новыми
+    def is_product_different(existing_product, new_data: dict) -> bool:
+        fields = ["name", "price", "color_ids", "size_ids", "description", "product_type", "material",
+                  "features", "usage", "temperature_range", "subcategory_id"]
+        for field in fields:
+            existing_value = getattr(existing_product, field, None)
+            new_value = new_data.get(field)
+            if field == "price":
+                try:
+                    if float(existing_value) != float(new_value):
+                        return True
+                except:
+                    if existing_value != new_value:
+                        return True
+            elif field in ["color_ids", "size_ids"]:
+                if list(existing_value or []) != new_value:
+                    return True
+            else:
+                if existing_value != new_value:
+                    return True
+        return False
+
+    # Собираем множество ID, представленных в Excel (только для строк с указанным валидным ID)
+    excel_ids = set()
+
+    # Обрабатываем каждую строку, начиная со второй (данные)
+    for row in rows[1:]:
+        # Читаем значения ячеек по заголовкам
+        product_id = row[header_map["ID"]].value
+        name = row[header_map["Название"]].value
+        price = row[header_map["Цена"]].value
+        color_ids_str = row[header_map["Цветы"]].value
+        size_ids_str = row[header_map["Размеры"]].value
+        description = row[header_map["Описание"]].value
+        product_type = row[header_map["Тип продукта"]].value
+        material = row[header_map["Материал"]].value
+        features = row[header_map["Особенности"]].value
+        usage = row[header_map["Использование"]].value
+        temperature_range = row[header_map["Температурный диапазон"]].value
+        subcategory_id = row[header_map["ID подкатегории"]].value
+
+        try:
+            price = float(price)
+        except Exception:
+            price = 0.0
+
+        color_ids = parse_ids(color_ids_str)
+        size_ids = parse_ids(size_ids_str)
+
+        product_data = {
+            "name": name,
+            "price": price,
+            "color_ids": color_ids,
+            "size_ids": size_ids,
+            "description": description,
+            "product_type": product_type,
+            "material": material,
+            "features": features,
+            "usage": usage,
+            "temperature_range": temperature_range,
+            "subcategory_id": int(subcategory_id) if subcategory_id is not None else None
+        }
+
+        if product_id is not None:
+            try:
+                product_id_int = int(product_id)
+                excel_ids.add(product_id_int)
+            except Exception:
+                product_id_int = None
+
+            if product_id_int:
+                existing_product = await rq.get_product_by_id(product_id_int)
+                if existing_product:
+                    # Обновляем только если данные отличаются
+                    if is_product_different(existing_product, product_data):
+                        success = await rq.update_product(product_id_int, product_data)
+                        if success:
+                            updated_count += 1
+                    # Если данные не изменились, обновление не производится
+                else:
+                    success = await rq.add_product(product_data)
+                    if success:
+                        added_count += 1
+            else:
+                success = await rq.add_product(product_data)
+                if success:
+                    added_count += 1
+        else:
+            # Если ID не указан – добавляем новый товар
+            success = await rq.add_product(product_data)
+            if success:
+                added_count += 1
+
+    # Получаем все товары из БД и формируем множество их ID
+    all_products = await rq.get_all_products()
+    db_ids = {product["id"] for product in all_products if product.get("id") is not None}
+
+    # Находим ID товаров, которые есть в БД, но отсутствуют в Excel-файле – их необходимо удалить
+    ids_to_delete = db_ids - excel_ids
+
+    for product_id in ids_to_delete:
+        if await rq.delete_product(product_id):
+            deleted_count += 1
+
+    await state.clear()
+    sent_message = await message.answer(
+        f"Операция завершена.\nОбновлено товаров: {updated_count}\nДобавлено товаров: {added_count}\nУдалено товаров: {deleted_count}",
+        reply_markup=kb.go_to_dashboard
+    )
+    user_data['bot_messages'].append(sent_message.message_id)
+
 
 

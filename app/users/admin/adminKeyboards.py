@@ -352,8 +352,6 @@ def create_parent_category_keyboard_add(categories: list, page: int, has_prev: b
 
 # Клавиатура для раздела "Товары"
 product_menu_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="Добавить товар", callback_data="add_product"),
-     InlineKeyboardButton(text="Редактировать товар", callback_data="edit_product")],
-    [InlineKeyboardButton(text="Удалить товар", callback_data="delete_product")],
+    [InlineKeyboardButton(text="📥 Скачать Excel файл", callback_data="edit_product")],
     [InlineKeyboardButton(text="⬅️ Назад", callback_data="go_to_dashboard")]
 ])

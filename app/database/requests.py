@@ -303,3 +303,116 @@ async def delete_subcategory(subcategory_id: int) -> bool:
             print(f"Ошибка при удалении подкатегории: {e}")
             await session.rollback()
             return False
+
+async def get_all_products() -> list:
+    async with async_session() as session:
+        try:
+            result = await session.execute(select(Product))
+            products = result.scalars().all()
+            return [
+                {
+                    "id": product.id,
+                    "name": product.name,
+                    "price": float(product.price),
+                    "color_ids": product.color_ids,
+                    "size_ids": product.size_ids,
+                    "description": product.description,
+                    "product_type": product.product_type,
+                    "material": product.material,
+                    "features": product.features,
+                    "usage": product.usage,
+                    "temperature_range": product.temperature_range,
+                    "subcategory_id": product.subcategory_id
+                }
+                for product in products
+            ]
+        except Exception as e:
+            print(f"Ошибка при получении товаров: {e}")
+            return []
+
+async def get_all_colors() -> list:
+    async with async_session() as session:
+        try:
+            result = await session.execute(select(Color))
+            colors = result.scalars().all()
+            return [{"id": color.id, "name": color.name} for color in colors]
+        except Exception as e:
+            print(f"Ошибка при получении цветов: {e}")
+            return []
+
+async def get_all_sizes() -> list:
+    async with async_session() as session:
+        try:
+            result = await session.execute(select(Size))
+            sizes = result.scalars().all()
+            return [{"id": size.id, "size": size.size} for size in sizes]
+        except Exception as e:
+            print(f"Ошибка при получении размеров: {e}")
+            return []
+
+async def get_all_subcategories() -> list:
+    async with async_session() as session:
+        try:
+            # Выполняем join с таблицей Category для получения названия родительской категории
+            stmt = select(Subcategory, Category).join(Category, Subcategory.category_id == Category.id)
+            result = await session.execute(stmt)
+            rows = result.all()
+            subcategories = []
+            for subcat, cat in rows:
+                subcategories.append({
+                    "id": subcat.id,
+                    "name": subcat.name,
+                    "category_id": subcat.category_id,
+                    "category_name": cat.name
+                })
+            return subcategories
+        except Exception as e:
+            print(f"Ошибка при получении подкатегорий: {e}")
+            return []
+
+async def update_product(product_id: int, product_data: dict) -> bool:
+    async with async_session() as session:
+        try:
+            await session.execute(
+                update(Product).where(Product.id == product_id).values(**product_data)
+            )
+            await session.commit()
+            return True
+        except Exception as e:
+            print(f"Ошибка при обновлении продукта {product_id}: {e}")
+            await session.rollback()
+            return False
+
+async def add_product(product_data: dict) -> bool:
+    async with async_session() as session:
+        try:
+            new_product = Product(**product_data)
+            session.add(new_product)
+            await session.commit()
+            return True
+        except Exception as e:
+            print(f"Ошибка при добавлении продукта: {e}")
+            await session.rollback()
+            return False
+
+async def get_product_by_id(product_id: int):
+    async with async_session() as session:
+        try:
+            result = await session.execute(select(Product).where(Product.id == product_id))
+            product = result.scalar_one_or_none()
+            return product
+        except Exception as e:
+            print(f"Ошибка при получении продукта {product_id}: {e}")
+            return None
+
+
+async def delete_product(product_id: int) -> bool:
+    async with async_session() as session:
+        try:
+            await session.execute(delete(Product).where(Product.id == product_id))
+            await session.commit()
+            return True
+        except Exception as e:
+            print(f"Ошибка при удалении продукта {product_id}: {e}")
+            await session.rollback()
+            return False
