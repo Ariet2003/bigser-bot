@@ -2,7 +2,7 @@ import re
 from datetime import datetime
 
 from aiogram.enums import ParseMode
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
 from aiogram.filters import CommandStart, Command
 from aiogram import F, Router
 
@@ -1114,3 +1114,21 @@ async def confirm_delete_subcategory(callback_query: CallbackQuery, state: FSMCo
     else:
         sent_message = await callback_query.message.answer("Удаление отменено.", reply_markup=kb.go_to_dashboard)
         user_data['bot_messages'].append(sent_message.message_id)
+
+
+# Меню "Товары"
+@router.callback_query(F.data == "manage_one_product")
+async def products_menu(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids.setdefault(tuid, {"bot_messages": [], "user_messages": []})
+    user_data["user_messages"].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    sent_message = await callback_query.message.answer_photo(
+        photo=utils.adminka_png,
+        caption="Выберите нужное действие с товарами:",
+        reply_markup=kb.product_menu_keyboard
+    )
+    user_data["bot_messages"].append(sent_message.message_id)
+
+

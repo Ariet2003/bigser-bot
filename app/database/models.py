@@ -1,6 +1,6 @@
 from typing import Optional, List
 from sqlalchemy import (
-    BigInteger, Integer, String, Boolean, ForeignKey, JSON, DECIMAL, TIMESTAMP, func, Float, ARRAY
+    Integer, String, ForeignKey, JSON, DECIMAL, TIMESTAMP, func
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.ext.asyncio import AsyncAttrs, async_sessionmaker, create_async_engine
@@ -11,10 +11,8 @@ load_dotenv()
 engine = create_async_engine(url=os.getenv('SQLITE_URL'))
 async_session = async_sessionmaker(engine)
 
-
 class Base(AsyncAttrs, DeclarativeBase):
     pass
-
 
 class Category(Base):
     __tablename__ = 'categories'
@@ -25,7 +23,6 @@ class Category(Base):
     subcategories: Mapped[List["Subcategory"]] = relationship(
         "Subcategory", back_populates="category", cascade="all, delete"
     )
-
 
 class Subcategory(Base):
     __tablename__ = 'subcategories'
@@ -40,51 +37,36 @@ class Subcategory(Base):
         "Product", back_populates="subcategory", cascade="all, delete"
     )
 
-
 class Color(Base):
     __tablename__ = 'colors'
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-
-    # Товары, которым назначен этот цвет
-    products: Mapped[List["Product"]] = relationship("Product", back_populates="color")
-
+    # Отношение с товарами удалено, так как теперь товары хранят список цветов в JSON
 
 class Size(Base):
     __tablename__ = 'sizes'
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     size: Mapped[str] = mapped_column(String(50), nullable=False)
-
-    # Товары, которым назначен этот размер
-    products: Mapped[List["Product"]] = relationship("Product", back_populates="size")
-
+    # Отношение с товарами удалено, так как теперь товары хранят список размеров в JSON
 
 class Product(Base):
     __tablename__ = 'products'
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     price: Mapped[float] = mapped_column(DECIMAL(10, 2), nullable=False)
-    color_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey('colors.id', ondelete='SET NULL'), nullable=True
-    )
-    size_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey('sizes.id', ondelete='SET NULL'), nullable=True
-    )
+    # Сохраняем списки идентификаторов цветов и размеров в формате JSON
+    color_ids: Mapped[Optional[List[int]]] = mapped_column(JSON, nullable=True)
+    size_ids: Mapped[Optional[List[int]]] = mapped_column(JSON, nullable=True)
     description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     product_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     material: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     features: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     usage: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     temperature_range: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    subcategory_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey('subcategories.id', ondelete='SET NULL'), nullable=True
-    )
+    subcategory_id: Mapped[Optional[int]] = mapped_column(ForeignKey('subcategories.id', ondelete='SET NULL'), nullable=True)
 
-    # Связи с другими таблицами
+    # Связь с подкатегорией
     subcategory: Mapped[Optional["Subcategory"]] = relationship("Subcategory", back_populates="products")
-    color: Mapped[Optional["Color"]] = relationship("Color", back_populates="products")
-    size: Mapped[Optional["Size"]] = relationship("Size", back_populates="products")
-
 
 class User(Base):
     __tablename__ = 'users'
@@ -98,7 +80,6 @@ class User(Base):
     # Заказы клиента
     orders: Mapped[List["Order"]] = relationship("Order", back_populates="user", cascade="all, delete")
 
-
 class Order(Base):
     __tablename__ = 'orders'
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -108,12 +89,10 @@ class Order(Base):
     delivery_method: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     payment_method: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
-    # Связь с клиентом и позициями заказа
-    user: Mapped["user"] = relationship("User", back_populates="orders")
+    user: Mapped["User"] = relationship("User", back_populates="orders")
     order_items: Mapped[List["OrderItem"]] = relationship(
         "OrderItem", back_populates="order", cascade="all, delete"
     )
-
 
 class OrderItem(Base):
     __tablename__ = 'order_items'
@@ -122,10 +101,8 @@ class OrderItem(Base):
     product_id: Mapped[int] = mapped_column(ForeignKey('products.id', ondelete='CASCADE'))
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    # Связи с заказом и товаром
     order: Mapped["Order"] = relationship("Order", back_populates="order_items")
     product: Mapped["Product"] = relationship("Product")
-
 
 async def async_main():
     async with engine.begin() as conn:
