@@ -2,7 +2,7 @@ import re
 from datetime import datetime
 
 from aiogram.enums import ParseMode
-from aiogram.types import Message, CallbackQuery, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InputMediaPhoto, InputMediaVideo
 from aiogram.filters import CommandStart, Command
 from aiogram import F, Router
 from aiogram.types.input_file import BufferedInputFile
@@ -68,17 +68,17 @@ async def admin_account(message: Message, state: FSMContext):
     user_data['bot_messages'].append(sent_message.message_id)
 
 # Хендлер для обработки команды "/photo"
-@router.message(Command("photo"))
-async def request_photo_handler(message: Message):
-    await message.answer("Пожалуйста, отправьте фото, чтобы я мог получить его ID.")
-
-
-# Хендлер для обработки фото от пользователя
-@router.message(F.photo)
-async def photo_handler(message: Message):
-    # Берем фотографию в самом большом разрешении и получаем ее ID
-    photo_id = message.photo[-1].file_id
-    await message.answer(f"ID вашей картинки: {photo_id}")
+# @router.message(Command("photo"))
+# async def request_photo_handler(message: Message):
+#     await message.answer("Пожалуйста, отправьте фото, чтобы я мог получить его ID.")
+#
+#
+# # Хендлер для обработки фото от пользователя
+# @router.message(F.photo)
+# async def photo_handler(message: Message):
+#     # Берем фотографию в самом большом разрешении и получаем ее ID
+#     photo_id = message.photo[-1].file_id
+#     await message.answer(f"ID вашей картинки: {photo_id}")
 
 
 @router.callback_query(F.data == 'manage_employees')
@@ -1620,4 +1620,247 @@ async def create_report(callback_query: CallbackQuery, state: FSMContext):
     )
 
     user_data['bot_messages'].append(sent_message.message_id)
+
+
+@router.callback_query(F.data == "send_notifications")
+async def broadcast_start(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    sent_message = await callback_query.message.answer_photo(
+        photo=utils.adminka_png,
+        caption="Выберите нужное действие с рассылками:",
+        reply_markup=kb.broadcast_menu_start
+    )
+    user_data['bot_messages'].append(sent_message.message_id)
+
+
+@router.callback_query(F.data == "broadcast_history")
+async def show_broadcast_history(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    # Теперь функция сама создаёт сессию
+    history = await rq.get_broadcast_history()
+
+    group_names = {
+        "managers": "менеджеров",
+        "leads": "лидов",
+        "clients": "клиентов",
+        "all": "всех клиентов"
+    }
+
+    if history:
+        message_text = "ИСТОРИЯ РАССЫЛОК:\n\n"
+        for item in history:
+            text = item.text[:30] + "..." if len(item.text) > 20 else item.text
+            date = item.created_at.strftime("%d.%m.%Y")
+            group_name = group_names.get(item.target_group, item.target_group)
+            message_text += f"✏️ {text}\n📅 {date} | {item.total_users} • {item.delivered} • {item.failed} | {group_name}\n\n"
+    else:
+        message_text = "История рассылок пуста."
+
+    sent_message = await callback_query.message.answer(message_text, reply_markup=kb.go_to_notification)
+    user_data['bot_messages'].append(sent_message.message_id)
+
+
+@router.callback_query(F.data == "create_broadcast")
+async def show_broadcast_filters(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    sent_message = await callback_query.message.answer_photo(
+        photo=utils.adminka_png,
+        caption="Выберите кому нужно отправить рассылки",
+        reply_markup=kb.broadcast_filter_menu
+    )
+    user_data['bot_messages'].append(sent_message.message_id)
+
+    @router.callback_query(F.data.startswith("filter_"))
+    async def set_filter_type(callback_query: CallbackQuery, state: FSMContext):
+        filter_type = callback_query.data.split("_")[1]
+        await state.update_data(filter_type=filter_type)
+        await start_broadcast(callback_query, state)
+
+
+async def start_broadcast(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    await state.set_state(st.BroadcastStates.waiting_for_media)
+    sent_message = await callback_query.message.answer("Добавьте фото/видео для рассылки или отправьте -, если его нет.")
+    user_data['bot_messages'].append(sent_message.message_id)
+
+
+@router.message(st.BroadcastStates.waiting_for_media, F.photo | F.video | F.text)
+async def receive_media(message: Message, state: FSMContext):
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    media = None
+    if message.photo:
+        media = message.photo[-1].file_id
+        await state.update_data(media_type="photo")
+    elif message.video:
+        media = message.video.file_id
+        await state.update_data(media_type="video")
+    elif message.text and message.text == "-":
+        await state.update_data(media=None)
+        await state.update_data(media_type=None)
+        await state.set_state(st.BroadcastStates.waiting_for_text)
+        sent_message = await message.answer("Введите текст для рассылки.")
+        user_data['bot_messages'].append(sent_message.message_id)
+        return
+
+    await state.update_data(media=media)
+    await state.set_state(st.BroadcastStates.waiting_for_text)
+    sent_message = await message.answer("Введите текст для рассылки.")
+    user_data['bot_messages'].append(sent_message.message_id)
+
+
+@router.message(st.BroadcastStates.waiting_for_text, F.text | F.caption)
+async def receive_text(message: Message, state: FSMContext):
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    if message.text:
+        await state.update_data(text=message.text)
+    elif message.caption:
+        await state.update_data(text=message.caption)
+
+    data = await state.get_data()
+    media = data.get("media")
+    text = data.get("text")
+
+    async def send_broadcast(media, text, media_type):
+        if media:
+            if media_type == "photo":
+                return InputMediaPhoto(media=media, caption=text)
+            elif media_type == "video":
+                return InputMediaVideo(media=media, caption=text)
+        else:
+            return text
+
+    media_object = await send_broadcast(media, text, data.get("media_type"))
+
+    if media_object:
+        if isinstance(media_object, str):
+            sent_message = await message.answer(f"Вот так будет выглядеть рассылка:\n\n{media_object}",
+                                 reply_markup=kb.broadcast_menu)
+            user_data['bot_messages'].append(sent_message.message_id)
+        else:
+            if isinstance(media_object, InputMediaPhoto):
+                sent_message = await message.answer_photo(media_object.media, caption=media_object.caption,
+                                           reply_markup=kb.broadcast_menu)
+                user_data['bot_messages'].append(sent_message.message_id)
+            elif isinstance(media_object, InputMediaVideo):
+                sent_message = await message.answer_video(media_object.media, caption=media_object.caption,
+                                           reply_markup=kb.broadcast_menu)
+                user_data['bot_messages'].append(sent_message.message_id)
+    else:
+        sent_message = await message.answer("Вот так будет выглядеть рассылка:\n\n" + text, reply_markup=kb.broadcast_menu)
+        user_data['bot_messages'].append(sent_message.message_id)
+
+    await state.set_state(st.BroadcastStates.confirmation)
+
+
+@router.callback_query(F.data == "broadcast_confirm")
+async def confirm_broadcast(callback_query: CallbackQuery, state: FSMContext, data=None):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    data = await state.get_data()
+    users = await rq.get_all_users()
+    media = data.get("media")
+    text = data.get("text")
+    media_type = data.get("media_type")
+    filter_type = data.get("filter_type")
+
+    if filter_type:
+        users = await rq.get_filtered_users(filter_type)
+    else:
+        users = await rq.get_filtered_users("all_clients")
+    total_users = len(users)
+    delivered = 0
+    failed = 0
+
+    for user_id in users:
+        try:
+            if media:
+                if media_type == "photo":
+                    await callback_query.bot.send_photo(user_id, media, caption=text, reply_markup=kb.close_broadcast_message)
+                elif media_type == "video":
+                    await callback_query.bot.send_video(user_id, media, caption=text, reply_markup=kb.close_broadcast_message)
+            else:
+                await callback_query.bot.send_message(user_id, text, reply_markup=kb.close_broadcast_message)
+            delivered += 1
+        except Exception as e:
+            print(f"Ошибка отправки пользователю {user_id}: {e}")
+            failed += 1
+
+    # Сохраняем историю рассылки через функцию, внутри которой создаётся сессия
+    await rq.save_broadcast_history(
+         text=text,
+         media_type=media_type,
+         media_file_id=media,
+         total_users=total_users,
+         delivered=delivered,
+         failed=failed,
+         target_group=filter_type if filter_type else "all_clients"
+    )
+
+    sent_message = await callback_query.message.answer_photo(
+        photo=utils.adminka_png,
+        caption="Рассылка успешно отправлена! Возвращаемся в главное меню.",
+        reply_markup=kb.go_to_dashboard
+    )
+    user_data['bot_messages'].append(sent_message.message_id)
+    await state.clear()
+
+
+@router.callback_query(F.data == "broadcast_edit")
+async def edit_broadcast(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    await state.set_state(st.BroadcastStates.waiting_for_media)
+    sent_message = await callback_query.message.answer("Добавьте фото/видео для рассылки или отправьте -, если его нет.")
+    user_data['bot_messages'].append(sent_message.message_id)
+
+
+@router.callback_query(F.data == "broadcast_cancel")
+async def cancel_broadcast(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    sent_message = await callback_query.message.answer_photo(
+        photo=utils.adminka_png,
+        caption="Рассылка отменена. Возвращаемся в главное меню.",
+        reply_markup=kb.go_to_dashboard
+    )
+    user_data['bot_messages'].append(sent_message.message_id)
+    await state.clear()
+
+
+@router.callback_query(F.data == "close_broadcast_message")
+async def close_broadcast_message_handler(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.message.delete()
 

@@ -2,7 +2,7 @@ from typing import Optional, List, Dict
 from sqlalchemy.orm import selectinload
 from sqlalchemy import or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.database.models import async_session
+from app.database.models import async_session, BroadcastHistory
 from app.database.models import Color, Category, User, Product, Subcategory, Size, Order, OrderItem
 from app.users.user import userKeyboards as kb
 from sqlalchemy.exc import SQLAlchemyError
@@ -20,6 +20,7 @@ from sqlalchemy import Numeric
 from sqlalchemy import or_
 from sqlalchemy import Float
 from sqlalchemy.orm import aliased
+from sqlalchemy import select, desc, insert, and_
 import pytz
 import json
 
@@ -644,3 +645,59 @@ async def update_user_address(user_id: str, address: str) -> bool:
         except Exception as e:
             print(f"Ошибка при обновлении адреса для пользователя {user_id}: {e}")
             return False
+
+
+# Запрос всех пользователей для рассылки
+async def get_all_users():
+    async with async_session() as session:
+        result = await session.execute(select(User.telegram_id))
+        return [row[0] for row in result.all()]
+
+# Запрос для истории рассылок (с сессией внутри функции)
+async def get_broadcast_history():
+    async with async_session() as session:
+        result = await session.execute(
+            select(BroadcastHistory)
+            .order_by(desc(BroadcastHistory.created_at))
+            .limit(10)
+        )
+        return result.scalars().all()
+
+# Запрос для отчета о доставке рассылки группам (с сессией внутри функции)
+async def get_filtered_users(filter_type):
+    async with async_session() as session:
+        if filter_type == "managers":
+            result = await session.execute(select(User.telegram_id).where(User.role == "MANAGER"))
+        elif filter_type == "leads":
+            result = await session.execute(
+                select(User.telegram_id)
+                .where(and_(User.role == "USER", ~select(1).where(Order.user_id == User.id).exists()))
+            )
+        elif filter_type == "clients":
+            result = await session.execute(
+                select(User.telegram_id)
+                .where(and_(User.role == "USER", select(1).where(Order.user_id == User.id).exists()))
+            )
+        elif filter_type == "all":
+            result = await session.execute(
+                select(User.telegram_id)
+                .where(User.role == "USER")
+            )
+        else:
+            return []
+        return [row[0] for row in result.all()]
+
+# Сохранение истории рассылок (с сессией внутри функции)
+async def save_broadcast_history(text: str, media_type: str, media_file_id: str,
+                                 total_users: int, delivered: int, failed: int, target_group: str):
+    async with async_session() as session:
+        await session.execute(insert(BroadcastHistory).values(
+            text=text,
+            media_type=media_type,
+            media_file_id=media_file_id,
+            total_users=total_users,
+            delivered=delivered,
+            failed=failed,
+            target_group=target_group
+        ))
+        await session.commit()

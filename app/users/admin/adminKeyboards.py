@@ -458,4 +458,30 @@ def paginated_manager_filter_keyboard(managers: list, page: int = 1, page_size: 
     return keyboard
 
 
+broadcast_menu_start = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="🖊️Создать", callback_data="create_broadcast"),
+        InlineKeyboardButton(text="🗃️История", callback_data="broadcast_history")],
+    [InlineKeyboardButton(text="↩️На главную", callback_data="go_to_dashboard")],
+])
 
+broadcast_menu = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="📤Подтвердить и отправить", callback_data="broadcast_confirm")],
+    [InlineKeyboardButton(text="📝Редактировать", callback_data="broadcast_edit")],
+    [InlineKeyboardButton(text="❌Отмена", callback_data="broadcast_cancel")]
+])
+
+broadcast_filter_menu = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="Менеджерам", callback_data="filter_managers"),
+     InlineKeyboardButton(text="Лидам", callback_data="filter_leads")],
+    [InlineKeyboardButton(text="Клиентам", callback_data="filter_clients"),
+     InlineKeyboardButton(text="Всем клиентам", callback_data="filter_all_clients")],
+    [InlineKeyboardButton(text="⬅️ Назад", callback_data="send_notifications")]
+])
+
+close_broadcast_message = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="✖️Скрыть сообщение", callback_data="close_broadcast_message")]
+])
+
+go_to_notification = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="⬅️ Назад", callback_data="send_notifications")]
+])

@@ -1,10 +1,11 @@
 from typing import Optional, List
 from sqlalchemy import (
-    Integer, String, ForeignKey, JSON, DECIMAL, TIMESTAMP, func
+    Integer, String, ForeignKey, JSON, DECIMAL, TIMESTAMP, func, DateTime
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.ext.asyncio import AsyncAttrs, async_sessionmaker, create_async_engine
 from dotenv import load_dotenv
+from datetime import datetime
 import os
 
 load_dotenv()
@@ -117,6 +118,19 @@ class OrderItem(Base):
 
     order: Mapped["Order"] = relationship("Order", back_populates="order_items")
     product: Mapped["Product"] = relationship("Product")
+
+
+class BroadcastHistory(Base):
+    __tablename__ = "broadcast_history"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    text: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    media_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    media_file_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    total_users: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    delivered: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    failed: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    target_group: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 async def async_main():
     async with engine.begin() as conn:

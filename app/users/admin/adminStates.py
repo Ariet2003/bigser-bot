@@ -50,3 +50,10 @@ class ProductEdit(StatesGroup):
 class ReportFilter(StatesGroup):
     waiting_for_period_input = State()
 
+
+class BroadcastStates(StatesGroup):
+    waiting_for_filter = State()
+    waiting_for_media = State()
+    waiting_for_text = State()
+    confirmation = State()
+    broadcast_history = State()
