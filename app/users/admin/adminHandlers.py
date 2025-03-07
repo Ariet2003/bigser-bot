@@ -7,6 +7,7 @@ from aiogram.filters import CommandStart, Command
 from aiogram import F, Router
 from aiogram.types.input_file import BufferedInputFile
 
+from app.scripts import generate_report_excel
 from app.users.admin import adminKeyboards as kb
 from app.users.admin import adminStates as st
 from app import utils
@@ -1427,4 +1428,196 @@ async def process_edited_products(message: Message, state: FSMContext):
     user_data['bot_messages'].append(sent_message.message_id)
 
 
+async def get_report_filters(state: FSMContext) -> dict:
+    data = await state.get_data()
+    if "report_filters" not in data:
+        filters = {
+            "date": "all",    # варианты: "all", "year", "month", "week" или пользовательский период
+            "manager": "all", # "all" или id менеджера
+            "status": "all"   # "all", "Ожидание", "Принято", "Отменено"
+        }
+        await state.update_data(report_filters=filters)
+    else:
+        filters = data["report_filters"]
+    return filters
+
+
+@router.callback_query(F.data == "view_reports")
+async def view_reports(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    filters = await get_report_filters(state)
+    # Получаем текущее значение менеджера
+    manager_value = filters.get("manager", "all")
+    if manager_value != "all":
+        manager = await rq.get_manager_by_id(int(manager_value))
+        manager_name = manager["name"] if manager else "все менеджеры"
+    else:
+        manager_name = "все менеджеры"
+
+    main_keyboard = kb.create_report_main_keyboard(filters, manager_name=manager_name)
+    sent_message = await callback_query.message.answer_photo(
+        photo=utils.adminka_png,
+        caption="Настройте фильтры, нажмите «Создать отчёт», и Excel-документ будет готов.",
+        reply_markup=main_keyboard
+    )
+    user_data['bot_messages'].append(sent_message.message_id)
+
+
+@router.callback_query(F.data == "filter_date")
+async def show_date_filter(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.message.edit_reply_markup(reply_markup=kb.date_filter_keyboard())
+
+
+@router.callback_query(F.data.startswith("filter_date:"))
+async def select_date_filter(callback_query: CallbackQuery, state: FSMContext):
+
+    period = callback_query.data.split(":")[1]
+    filters = await get_report_filters(state)
+    if period == "period":
+        tuid = callback_query.message.chat.id
+        user_data = sent_message_add_screen_ids[tuid]
+        user_data['user_messages'].append(callback_query.message.message_id)
+        await delete_previous_messages(callback_query.message, tuid)
+
+        sent_message = await callback_query.message.answer("Введите период в формате ДД.ММ.ГГГГ - ДД.ММ.ГГГГ")
+
+        user_data['bot_messages'].append(sent_message.message_id)
+        await state.set_state(st.ReportFilter.waiting_for_period_input)
+        return
+    else:
+        filters["date"] = period
+        await state.update_data(report_filters=filters)
+
+    manager_value = filters.get("manager", "all")
+    if manager_value != "all":
+        manager = await rq.get_manager_by_id(int(manager_value))
+        manager_name = manager["name"] if manager else "все менеджеры"
+    else:
+        manager_name = "все менеджеры"
+
+    main_keyboard = kb.create_report_main_keyboard(filters, manager_name=manager_name)
+    await callback_query.message.edit_reply_markup(reply_markup=main_keyboard)
+
+
+@router.message(st.ReportFilter.waiting_for_period_input)
+async def process_period_input(message: Message, state: FSMContext):
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    period_text = message.text.strip()
+    if period_text == "/start":
+        await admin_account(message, state)
+        return
+    else:
+        if " - " not in period_text:
+            sent_message = await message.answer("Неверный формат. Введите период в формате ДД.ММ.ГГГГ - ДД.ММ.ГГГГ")
+            user_data['bot_messages'].append(sent_message.message_id)
+            return
+    filters = await get_report_filters(state)
+    filters["date"] = period_text
+    await state.update_data(report_filters=filters)
+
+    manager_value = filters.get("manager", "all")
+    if manager_value != "all":
+        manager = await rq.get_manager_by_id(int(manager_value))
+        manager_name = manager["name"] if manager else "все менеджеры"
+    else:
+        manager_name = "все менеджеры"
+
+    main_keyboard = kb.create_report_main_keyboard(filters, manager_name=manager_name)
+    sent_message = await message.answer_photo(
+        photo=utils.adminka_png,
+        caption="Настройте фильтры, нажмите «Создать отчёт», и Excel-документ будет готов.",
+        reply_markup=main_keyboard
+    )
+    user_data['bot_messages'].append(sent_message.message_id)
+
+
+@router.callback_query(F.data == "filter_manager")
+async def show_manager_filter(callback_query: CallbackQuery, state: FSMContext):
+    managers = await rq.get_all_managers()
+    keyboard = kb.manager_filter_keyboard(managers)
+    await callback_query.message.edit_reply_markup(reply_markup=keyboard)
+
+
+@router.callback_query(F.data.startswith("filter_manager:"))
+async def select_manager_filter(callback_query: CallbackQuery, state: FSMContext):
+    manager_value = callback_query.data.split(":")[1]
+    filters = await get_report_filters(state)
+    filters["manager"] = manager_value
+    await state.update_data(report_filters=filters)
+
+    if manager_value != "all":
+        manager = await rq.get_manager_by_id(int(manager_value))
+        manager_name = manager["name"] if manager else "все менеджеры"
+    else:
+        manager_name = "все менеджеры"
+
+    main_keyboard = kb.create_report_main_keyboard(filters, manager_name=manager_name)
+    await callback_query.message.edit_reply_markup(reply_markup=main_keyboard)
+
+
+@router.callback_query(F.data == "filter_status")
+async def show_status_filter(callback_query: CallbackQuery, state: FSMContext):
+    keyboard = kb.status_filter_keyboard()
+    await callback_query.message.edit_reply_markup(reply_markup=keyboard)
+
+
+@router.callback_query(F.data.startswith("filter_status:"))
+async def select_status_filter(callback_query: CallbackQuery, state: FSMContext):
+    status_value = callback_query.data.split(":")[1]
+    filters = await get_report_filters(state)
+    filters["status"] = status_value
+    await state.update_data(report_filters=filters)
+
+    manager_value = filters.get("manager", "all")
+    if manager_value != "all":
+        manager = await rq.get_manager_by_id(int(manager_value))
+        manager_name = manager["name"] if manager else "все менеджеры"
+    else:
+        manager_name = "все менеджеры"
+
+    main_keyboard = kb.create_report_main_keyboard(filters, manager_name=manager_name)
+    await callback_query.message.edit_reply_markup(reply_markup=main_keyboard)
+
+
+@router.callback_query(F.data == "back_to_report_main")
+async def back_to_report_main(callback_query: CallbackQuery, state: FSMContext):
+    filters = await get_report_filters(state)
+
+    manager_value = filters.get("manager", "all")
+    if manager_value != "all":
+        manager = await rq.get_manager_by_id(int(manager_value))
+        manager_name = manager["name"] if manager else "все менеджеры"
+    else:
+        manager_name = "все менеджеры"
+
+    main_keyboard = kb.create_report_main_keyboard(filters, manager_name=manager_name)
+    await callback_query.message.edit_reply_markup(reply_markup=main_keyboard)
+
+
+@router.callback_query(F.data == "create_report")
+async def create_report(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    filters = await get_report_filters(state)
+    report_file, report_filename = await generate_report_excel(filters)
+    from aiogram.types.input_file import BufferedInputFile
+    input_file = BufferedInputFile(report_file.getvalue(), filename=report_filename)
+    sent_message = await callback_query.message.answer_document(
+        document=input_file,
+        caption="Отчёт сформирован и готов к скачиванию.",
+        reply_markup=kb.go_to_dashboard
+    )
+
+    user_data['bot_messages'].append(sent_message.message_id)
 

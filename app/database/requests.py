@@ -7,11 +7,18 @@ from app.database.models import Color, Category, User, Product, Subcategory, Siz
 from app.users.user import userKeyboards as kb
 from sqlalchemy.exc import SQLAlchemyError
 from bot_instance import bot
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, cast, String, literal
 from datetime import datetime
 from sqlalchemy import update
 import random
+from sqlalchemy import select, func, cast, String, literal
+from datetime import date, datetime, timedelta
+import calendar
+from sqlalchemy import func, distinct
+from datetime import datetime, timedelta
+from sqlalchemy import Numeric
 from sqlalchemy import or_
+from sqlalchemy import Float
 from sqlalchemy.orm import aliased
 import pytz
 import json
@@ -416,3 +423,161 @@ async def delete_product(product_id: int) -> bool:
             print(f"Ошибка при удалении продукта {product_id}: {e}")
             await session.rollback()
             return False
+
+
+async def get_all_managers() -> list:
+    async with async_session() as session:
+        try:
+            result = await session.execute(select(User).where(User.role == "MANAGER"))
+            managers = result.scalars().all()
+            return [{"id": manager.id, "name": manager.full_name or "Manager"} for manager in managers]
+        except Exception as e:
+            print(f"Ошибка при получении менеджеров: {e}")
+            return []
+
+
+async def get_manager_by_id(manager_id: int) -> dict:
+    async with async_session() as session:
+        try:
+            result = await session.execute(select(User).where(User.id == manager_id))
+            manager = result.scalars().first()
+            if manager:
+                return {"id": manager.id, "name": manager.full_name or "Manager"}
+            return None
+        except Exception as e:
+            print(f"Ошибка при получении менеджера {manager_id}: {e}")
+            return None
+
+
+async def get_report_data(filters: dict) -> dict:
+    async with async_session() as session:
+        try:
+            conditions = []
+
+            # Фильтр по менеджеру (Order.processed_by_id)
+            manager_filter = filters.get("manager", "all")
+            if manager_filter != "all":
+                try:
+                    conditions.append(Order.processed_by_id == int(manager_filter))
+                except Exception as e:
+                    print(f"Ошибка преобразования менеджера: {e}")
+
+            # Фильтр по статусу
+            status_filter = filters.get("status", "all")
+            if status_filter not in ("all", "все статусы"):
+                mapping = {
+                    "Принятый": "Принято",
+                    "Отмененный": "Отменено"
+                }
+                status_filter_db = mapping.get(status_filter, status_filter)
+                conditions.append(Order.status == status_filter_db)
+
+            # Фильтр по дате (order_datetime)
+            date_filter = filters.get("date", "all")
+            if date_filter != "all":
+                today = date.today()
+                if date_filter == "week":
+                    start_date = today - timedelta(days=today.weekday())
+                    end_date = start_date + timedelta(days=6)
+                elif date_filter == "month":
+                    start_date = today.replace(day=1)
+                    last_day = calendar.monthrange(today.year, today.month)[1]
+                    end_date = today.replace(day=last_day)
+                elif date_filter == "year":
+                    start_date = today.replace(month=1, day=1)
+                    end_date = today.replace(month=12, day=31)
+                else:
+                    try:
+                        # Ожидается формат "ДД.ММ.ГГГГ - ДД.ММ.ГГГГ"
+                        start_date_str, end_date_str = date_filter.split(" - ")
+                        start_date = datetime.strptime(start_date_str.strip(), "%d.%m.%Y").date()
+                        end_date = datetime.strptime(end_date_str.strip(), "%d.%m.%Y").date()
+                    except Exception as e:
+                        print(f"Ошибка при разборе пользовательского периода: {e}")
+                        start_date = None
+                        end_date = None
+                if start_date and end_date:
+                    start_dt = datetime.combine(start_date, datetime.min.time())
+                    end_dt = datetime.combine(end_date, datetime.max.time())
+                    conditions.append(Order.order_datetime.between(start_dt, end_dt))
+
+            # Формирование строки товара: "Product.name || ' (' || OrderItem.quantity || ')'"
+            product_text = (
+                Product.name
+                .op("||")(literal(" ("))
+                .op("||")(cast(OrderItem.quantity, String))
+                .op("||")(literal(")"))
+            )
+
+            stmt = (
+                select(
+                    Order.id,
+                    Order.order_datetime,
+                    func.coalesce(User.full_name, "Не назначен").label("manager_name"),
+                    Order.status,
+                    Order.delivery_method,
+                    Order.payment_method,
+                    func.coalesce(
+                        func.sum(OrderItem.quantity * Product.price),
+                        0
+                    ).label("total_amount"),
+                    func.coalesce(func.group_concat(product_text, literal(", ")), '').label("products")
+                )
+                .outerjoin(OrderItem, Order.id == OrderItem.order_id)
+                .outerjoin(Product, OrderItem.product_id == Product.id)
+                .outerjoin(User, Order.processed_by_id == User.id)
+                .where(*conditions)
+                .group_by(Order.id)
+            )
+
+            result = await session.execute(stmt)
+            rows = result.all()
+
+            orders_list = []
+            for row in rows:
+                order_id, order_datetime, manager_name, status, delivery_method, payment_method, total_amount, products = row
+                if isinstance(order_datetime, datetime):
+                    order_datetime = order_datetime.strftime("%Y-%m-%d %H:%M:%S")
+                orders_list.append({
+                    "id": order_id,
+                    "order_datetime": order_datetime,
+                    "manager_name": manager_name,
+                    "status": status,
+                    "delivery_method": delivery_method,
+                    "payment_method": payment_method,
+                    "total_amount": float(total_amount),
+                    "products": products
+                })
+
+            data = {
+                "total_orders": len(orders_list),
+                "orders": orders_list
+            }
+            return data
+
+        except Exception as e:
+            print(f"Ошибка при получении данных отчёта: {e}")
+            return {}
+
+
+async def get_manager_fullname(manager_filter: str) -> str:
+    """
+    Получает ФИО менеджера по его id.
+
+    Параметры:
+      manager_filter: строковое значение, содержащее id менеджера.
+
+    Возвращает:
+      ФИО менеджера, если найдено, иначе "Не назначен" или исходное значение фильтра.
+    """
+    async with async_session() as session:
+        try:
+            manager_obj = await session.get(User, int(manager_filter))
+            if manager_obj and manager_obj.full_name:
+                return manager_obj.full_name
+            else:
+                return "Не назначен"
+        except Exception as e:
+            print(f"Ошибка получения ФИО менеджера: {e}")
+            return str(manager_filter)
+

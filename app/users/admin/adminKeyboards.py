@@ -355,3 +355,107 @@ product_menu_keyboard = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="📥 Скачать Excel файл", callback_data="edit_product")],
     [InlineKeyboardButton(text="⬅️ Назад", callback_data="go_to_dashboard")]
 ])
+
+
+view_reports_button = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="за все время", callback_data='filter_date'),
+     InlineKeyboardButton(text="все менеджеры", callback_data='filter_manager')],
+    [InlineKeyboardButton(text="все статусы", callback_data='filter_status')],
+    [InlineKeyboardButton(text="Создать отчет", callback_data='create_report')],
+    [InlineKeyboardButton(text="⬅️ В личный кабинет", callback_data='go_to_dashboard')]
+])
+
+
+def create_report_main_keyboard(report_filters: dict, manager_name: str = "все менеджеры") -> InlineKeyboardMarkup:
+    date_val = report_filters.get("date", "all")
+    date_text = {
+        "all": "за все время",
+        "year": "за год",
+        "month": "за месяц",
+        "week": "за неделю"
+    }.get(date_val, date_val)
+
+    status_val = report_filters.get("status", "all")
+    status_text = {
+        "all": "все статусы",
+        "Ожидание": "Ожидание",
+        "Принято": "Принято",
+        "Отменено": "Отменено"
+    }.get(status_val, status_val)
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"{date_text}", callback_data="filter_date"),
+         InlineKeyboardButton(text=f"{manager_name}", callback_data="filter_manager")],
+        [InlineKeyboardButton(text=f"{status_text}", callback_data="filter_status")],
+        [InlineKeyboardButton(text="Создать отчёт", callback_data="create_report")],
+        [InlineKeyboardButton(text="⬅️ В личный кабинет", callback_data="go_to_dashboard")]
+    ])
+    return keyboard
+
+
+def date_filter_keyboard() -> InlineKeyboardMarkup:
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="за год", callback_data="filter_date:year"),
+            InlineKeyboardButton(text="за месяц", callback_data="filter_date:month"),
+            InlineKeyboardButton(text="за неделю", callback_data="filter_date:week")
+        ],
+        [
+            InlineKeyboardButton(text="период", callback_data="filter_date:period"),
+            InlineKeyboardButton(text="за все время", callback_data="filter_date:all")
+        ],
+        [
+            InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_report_main")
+        ]
+    ])
+    return keyboard
+
+
+def manager_filter_keyboard(managers: list) -> InlineKeyboardMarkup:
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[])
+    for mgr in managers:
+        button = InlineKeyboardButton(text=mgr["name"], callback_data=f"filter_manager:{mgr['id']}")
+        keyboard.inline_keyboard.append([button])
+    keyboard.inline_keyboard.append([InlineKeyboardButton(text="все менеджеры", callback_data="filter_manager:all")])
+    keyboard.inline_keyboard.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_report_main")])
+    return keyboard
+
+
+def status_filter_keyboard() -> InlineKeyboardMarkup:
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="Ожидание", callback_data="filter_status:Ожидание"),
+            InlineKeyboardButton(text="Принято", callback_data="filter_status:Принято"),
+            InlineKeyboardButton(text="Отменено", callback_data="filter_status:Отменено")
+        ],
+        [
+            InlineKeyboardButton(text="все статусы", callback_data="filter_status:all")
+        ],
+        [
+            InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_report_main")
+        ]
+    ])
+    return keyboard
+
+
+def paginated_manager_filter_keyboard(managers: list, page: int = 1, page_size: int = 10) -> InlineKeyboardMarkup:
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[])
+    start = (page - 1) * page_size
+    end = start + page_size
+    current_managers = managers[start:end]
+    for mgr in current_managers:
+        button = InlineKeyboardButton(text=mgr["name"], callback_data=f"filter_manager:{mgr['id']}")
+        keyboard.inline_keyboard.append([button])
+    nav_buttons = []
+    if page > 1:
+        nav_buttons.append(InlineKeyboardButton(text="⬅️ Предыдущая", callback_data=f"manager_page:{page - 1}"))
+    if end < len(managers):
+        nav_buttons.append(InlineKeyboardButton(text="Следующая ➡️", callback_data=f"manager_page:{page + 1}"))
+    if nav_buttons:
+        keyboard.inline_keyboard.append(nav_buttons)
+    keyboard.inline_keyboard.append([InlineKeyboardButton(text="все менеджеры", callback_data="filter_manager:all")])
+    keyboard.inline_keyboard.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_report_main")])
+    return keyboard
+
+
+

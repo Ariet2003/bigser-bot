@@ -77,22 +77,36 @@ class User(Base):
     phone_number: Mapped[str] = mapped_column(String(20), nullable=True)
     role: Mapped[str] = mapped_column(String(20), nullable=False)
 
-    # Заказы клиента
-    orders: Mapped[List["Order"]] = relationship("Order", back_populates="user", cascade="all, delete")
+    # Указываем, что связь orders должна использовать только столбец user_id
+    orders: Mapped[List["Order"]] = relationship(
+        "Order",
+        back_populates="user",
+        cascade="all, delete",
+        foreign_keys=lambda: [Order.user_id]
+    )
 
 class Order(Base):
     __tablename__ = 'orders'
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey('users.id', ondelete='CASCADE'))
-    order_datetime: Mapped[TIMESTAMP] = mapped_column(TIMESTAMP, server_default=func.current_timestamp())
+    processed_by_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey('users.id', ondelete='SET NULL'), nullable=True
+    )  # Кто обработал заказ
+    order_datetime: Mapped[TIMESTAMP] = mapped_column(
+        TIMESTAMP, server_default=func.current_timestamp()
+    )
     status: Mapped[str] = mapped_column(String(50), nullable=False)
     delivery_method: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     payment_method: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
-    user: Mapped["User"] = relationship("User", back_populates="orders")
+    user: Mapped["User"] = relationship("User", foreign_keys=[user_id], back_populates="orders")
+    processed_by: Mapped[Optional["User"]] = relationship(
+        "User", foreign_keys=[processed_by_id]
+    )  # Отношение к обработчику заказа
     order_items: Mapped[List["OrderItem"]] = relationship(
         "OrderItem", back_populates="order", cascade="all, delete"
     )
+
 
 class OrderItem(Base):
     __tablename__ = 'order_items'

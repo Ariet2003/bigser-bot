@@ -45,3 +45,8 @@ class SubcategoryAdd(StatesGroup):
 
 class ProductEdit(StatesGroup):
     waiting_for_excel_file = State()
+
+
+class ReportFilter(StatesGroup):
+    waiting_for_period_input = State()
+
