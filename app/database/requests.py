@@ -581,3 +581,66 @@ async def get_manager_fullname(manager_filter: str) -> str:
             print(f"Ошибка получения ФИО менеджера: {e}")
             return str(manager_filter)
 
+
+async def update_user_full_name(user_id: str, full_name: str) -> bool:
+    async with async_session() as session:
+        try:
+            result = await session.execute(select(User).where(User.telegram_id == user_id))
+            user = result.scalars().first()
+            if user:
+                user.full_name = full_name
+                await session.commit()
+                return True
+            return False
+        except Exception as e:
+            print(f"Ошибка при обновлении ФИО для пользователя {user_id}: {e}")
+            return False
+
+
+async def get_user_info_by_id(user_id: str) -> dict:
+    async with async_session() as session:
+        try:
+            result = await session.execute(select(User).where(User.telegram_id == user_id))
+            user = result.scalars().first()
+            if user:
+                # Если какое-либо поле равно None, возвращаем "Не указано"
+                return {
+                    "id": user.id,
+                    "full_name": user.full_name if user.full_name is not None else "Не указано",
+                    "address": user.address if user.address is not None else "Не указано",
+                    "phone_number": user.phone_number if user.phone_number is not None else "Не указано"
+                }
+            return {"answer": "Пользователь не найден"}
+        except Exception as e:
+            print(f"Ошибка при получении данных пользователя {user_id}: {e}")
+            return {"answer": "Ошибка"}
+
+
+async def update_user_phone(user_id: str, phone: str) -> bool:
+    async with async_session() as session:
+        try:
+            result = await session.execute(select(User).where(User.telegram_id == user_id))
+            user = result.scalars().first()
+            if user:
+                user.phone_number = phone
+                await session.commit()
+                return True
+            return False
+        except Exception as e:
+            print(f"Ошибка при обновлении номера телефона для пользователя {user_id}: {e}")
+            return False
+
+
+async def update_user_address(user_id: str, address: str) -> bool:
+    async with async_session() as session:
+        try:
+            result = await session.execute(select(User).where(User.telegram_id == user_id))
+            user = result.scalars().first()
+            if user:
+                user.address = address
+                await session.commit()
+                return True
+            return False
+        except Exception as e:
+            print(f"Ошибка при обновлении адреса для пользователя {user_id}: {e}")
+            return False
