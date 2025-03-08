@@ -1,3 +1,4 @@
+import os
 import re
 from datetime import datetime
 
@@ -5,9 +6,9 @@ from aiogram.enums import ParseMode
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InputMediaPhoto, InputMediaVideo
 from aiogram.filters import CommandStart, Command
 from aiogram import F, Router
-from aiogram.types.input_file import BufferedInputFile
+from aiogram.types.input_file import BufferedInputFile, FSInputFile
 
-from app.scripts import generate_report_excel
+from app.scripts import generate_report_excel, generate_photo_id_pdf
 from app.users.admin import adminKeyboards as kb
 from app.users.admin import adminStates as st
 from app import utils
@@ -1863,4 +1864,69 @@ async def cancel_broadcast(callback_query: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "close_broadcast_message")
 async def close_broadcast_message_handler(callback_query: CallbackQuery, state: FSMContext):
     await callback_query.message.delete()
+
+
+# Обработчик нажатия кнопки "Сгенерировать id фото"
+@router.callback_query(F.data == 'generate_photo_id')
+async def cmd_generate_photo_id(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    sent_message = await callback_query.message.answer_photo(
+        photo=utils.user_second_png,
+        caption="Пожалуйста, отправьте ZIP архив с фотографиями товаров.",
+        reply_markup=kb.go_to_dashboard
+    )
+    user_data['bot_messages'].append(sent_message.message_id)
+    await state.set_state(st.PhotoIdGen.waiting_for_zip)
+
+# Обработчик получения ZIP файла (с фильтром по состоянию)
+@router.message(
+    st.PhotoIdGen.waiting_for_zip,
+    lambda message: message.document is not None and message.document.file_name.lower().endswith('.zip')
+)
+async def handle_zip_file(message: Message, state: FSMContext):
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    sent_message = await message.answer("Обработка архива, пожалуйста, подождите...")
+
+    user_data['bot_messages'].append(sent_message.message_id)
+    try:
+        # Вызов логики из scripts.py: распаковка архива, отправка фото и генерация PDF
+        pdf_file_path = await generate_photo_id_pdf(message)
+    except Exception as e:
+        await message.answer("Ошибка при обработке архива: " + str(e))
+        await state.clear()
+        return
+
+    await delete_previous_messages(message, tuid)
+
+    # Отправляем PDF пользователю
+    await message.answer_document(
+        document=FSInputFile(pdf_file_path),
+        caption="Вот ваш PDF файл с file_id фотографий.",
+        reply_markup=kb.go_to_dashboard
+    )
+    user_data['bot_messages'].append(sent_message.message_id)
+
+    await state.clear()
+
+# Обработчик, если прислан не ZIP архив
+@router.message(st.PhotoIdGen.waiting_for_zip)
+async def invalid_file(message: Message, state: FSMContext):
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    sent_message = await message.answer("Пожалуйста, отправьте архив в формате .zip")
+
+    user_data['bot_messages'].append(sent_message.message_id)
+
+
 

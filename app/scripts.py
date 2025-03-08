@@ -6,6 +6,13 @@ from io import BytesIO
 from datetime import datetime, date, timedelta
 import calendar
 from app.database import requests as db_req  # Модуль запросов к БД
+import io
+import os
+import zipfile
+import tempfile
+from fpdf import FPDF
+from aiogram.types import Message
+from aiogram.types.input_file import FSInputFile
 
 async def generate_report_excel(filters: dict) -> (BytesIO, str):
     """
@@ -192,3 +199,86 @@ async def generate_report_excel(filters: dict) -> (BytesIO, str):
     wb.save(output_stream)
     output_stream.seek(0)
     return output_stream, "order_report.xlsx"
+
+
+async def generate_photo_id_pdf(message: Message) -> str:
+    """
+    Функция принимает сообщение с ZIP архивом, распаковывает его,
+    для каждого фото отправляет его в Telegram для получения file_id,
+    генерирует PDF, где на каждой странице фото и его file_id.
+    Перед возвратом PDF удаляет все отправленные фото из чата.
+    Возвращает путь к созданному PDF файлу и список file_id.
+    """
+    zip_file_bytes = io.BytesIO()
+    file_info = await message.bot.get_file(message.document.file_id)
+    await message.bot.download_file(file_info.file_path, destination=zip_file_bytes)
+    zip_file_bytes.seek(0)
+
+    file_ids = []
+    results = []
+    sent_messages = []  # Сохраняем объекты отправленных сообщений с фото
+
+    try:
+        with zipfile.ZipFile(zip_file_bytes) as zf:
+            for file in zf.infolist():
+                if file.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                    image_bytes = zf.read(file)
+                    ext = os.path.splitext(file.filename)[1]
+                    if ext.lower() not in ('.jpg', '.jpeg', '.png'):
+                        ext = ".jpg"
+
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as temp_file:
+                        temp_file.write(image_bytes)
+                        temp_file.flush()
+                        temp_path = temp_file.name
+
+                    sent_msg = await message.bot.send_photo(
+                        chat_id=message.chat.id,
+                        photo=FSInputFile(temp_path)
+                    )
+                    os.remove(temp_path)
+
+                    file_id = sent_msg.photo[-1].file_id
+                    file_ids.append(file_id)
+                    results.append((file.filename, image_bytes, file_id))
+                    sent_messages.append(sent_msg)
+    except Exception as e:
+        raise Exception("Ошибка при обработке архива: " + str(e))
+
+    pdf = FPDF()
+    for filename, image_bytes, file_id in results:
+        ext = os.path.splitext(filename)[1]
+        if ext.lower() not in ('.jpg', '.jpeg', '.png'):
+            ext = ".jpg"
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp_img:
+            tmp_img.write(image_bytes)
+            tmp_img.flush()
+            tmp_img_path = tmp_img.name
+
+        pdf.add_page()
+        try:
+            pdf.image(tmp_img_path, x=10, y=30, w=pdf.w - 20)
+        except Exception as e:
+            print(f"Ошибка при добавлении изображения {filename}: {e}")
+        pdf.set_y(pdf.get_y() + 10)
+        pdf.set_font("Arial", size=10)
+        pdf.multi_cell(0, 10, file_id)
+        os.remove(tmp_img_path)
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_pdf:
+        pdf_file_path = tmp_pdf.name
+        pdf.output(pdf_file_path)
+
+    # Удаляем все отправленные сообщения с фото из чата
+    for sent_msg in sent_messages:
+        try:
+            await message.bot.delete_message(chat_id=message.chat.id, message_id=sent_msg.message_id)
+        except Exception as e:
+            print(f"Ошибка при удалении сообщения {sent_msg.message_id}: {e}")
+
+    return pdf_file_path
+
+
+
+

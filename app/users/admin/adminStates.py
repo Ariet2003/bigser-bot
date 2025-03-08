@@ -57,3 +57,7 @@ class BroadcastStates(StatesGroup):
     waiting_for_text = State()
     confirmation = State()
     broadcast_history = State()
+
+
+class PhotoIdGen(StatesGroup):
+    waiting_for_zip = State()

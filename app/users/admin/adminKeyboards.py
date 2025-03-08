@@ -160,7 +160,8 @@ def confirm_delete_keyboard(employee_id: int, role: str) -> InlineKeyboardMarkup
 manage_products_keyboard = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="🗃️ Категории", callback_data='manage_categories'),
      InlineKeyboardButton(text="📁 Подкатегории", callback_data='manage_subcategories')],
-    [InlineKeyboardButton(text="📦 Товары", callback_data='manage_one_product')],
+    [InlineKeyboardButton(text="📦 Товары", callback_data='manage_one_product'),
+     InlineKeyboardButton(text="🆔 Генерация", callback_data='generate_photo_id')],
     [InlineKeyboardButton(text="⬅️ В личный кабинет", callback_data='go_to_dashboard')]
 ])
 
