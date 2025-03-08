@@ -12,8 +12,10 @@ load_dotenv()
 engine = create_async_engine(url=os.getenv('SQLITE_URL'))
 async_session = async_sessionmaker(engine)
 
+
 class Base(AsyncAttrs, DeclarativeBase):
     pass
+
 
 class Category(Base):
     __tablename__ = 'categories'
@@ -24,6 +26,7 @@ class Category(Base):
     subcategories: Mapped[List["Subcategory"]] = relationship(
         "Subcategory", back_populates="category", cascade="all, delete"
     )
+
 
 class Subcategory(Base):
     __tablename__ = 'subcategories'
@@ -38,17 +41,20 @@ class Subcategory(Base):
         "Product", back_populates="subcategory", cascade="all, delete"
     )
 
+
 class Color(Base):
     __tablename__ = 'colors'
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     # Отношение с товарами удалено, так как теперь товары хранят список цветов в JSON
 
+
 class Size(Base):
     __tablename__ = 'sizes'
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     size: Mapped[str] = mapped_column(String(50), nullable=False)
     # Отношение с товарами удалено, так как теперь товары хранят список размеров в JSON
+
 
 class Product(Base):
     __tablename__ = 'products'
@@ -68,6 +74,10 @@ class Product(Base):
 
     # Связь с подкатегорией
     subcategory: Mapped[Optional["Subcategory"]] = relationship("Subcategory", back_populates="products")
+    photos: Mapped[List["ProductPhoto"]] = relationship(
+        "ProductPhoto", back_populates="product", cascade="all, delete"
+    )
+
 
 class User(Base):
     __tablename__ = 'users'
@@ -85,6 +95,7 @@ class User(Base):
         cascade="all, delete",
         foreign_keys=lambda: [Order.user_id]
     )
+
 
 class Order(Base):
     __tablename__ = 'orders'
@@ -131,6 +142,16 @@ class BroadcastHistory(Base):
     failed: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     target_group: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class ProductPhoto(Base):
+    __tablename__ = 'product_photos'
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    file_id: Mapped[str] = mapped_column(String, nullable=False)
+    product_id: Mapped[int] = mapped_column(ForeignKey('products.id', ondelete='CASCADE'), nullable=False)
+
+    product: Mapped["Product"] = relationship("Product", back_populates="photos")
+
 
 async def async_main():
     async with engine.begin() as conn:
