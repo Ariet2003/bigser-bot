@@ -2,7 +2,7 @@ from typing import Optional, List, Dict
 from sqlalchemy.orm import selectinload
 from sqlalchemy import or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.database.models import async_session, BroadcastHistory
+from app.database.models import async_session, BroadcastHistory, ProductPhoto
 from app.database.models import Color, Category, User, Product, Subcategory, Size, Order, OrderItem
 from app.users.user import userKeyboards as kb
 from sqlalchemy.exc import SQLAlchemyError
@@ -312,13 +312,20 @@ async def delete_subcategory(subcategory_id: int) -> bool:
             await session.rollback()
             return False
 
+
 async def get_all_products() -> list:
     async with async_session() as session:
         try:
-            result = await session.execute(select(Product))
+            result = await session.execute(
+                select(Product).options(selectinload(Product.photos))
+            )
+            # Не используем await для all(), так как в вашем окружении он уже возвращает список
             products = result.scalars().all()
-            return [
-                {
+            result_list = []
+            for product in products:
+                # Принудительно получаем все связанные объекты, чтобы избежать ленивой загрузки позже
+                photos = list(product.photos)
+                result_list.append({
                     "id": product.id,
                     "name": product.name,
                     "price": float(product.price),
@@ -330,13 +337,14 @@ async def get_all_products() -> list:
                     "features": product.features,
                     "usage": product.usage,
                     "temperature_range": product.temperature_range,
-                    "subcategory_id": product.subcategory_id
-                }
-                for product in products
-            ]
+                    "subcategory_id": product.subcategory_id,
+                    "photo_file_ids": [photo.file_id for photo in photos]
+                })
+            return result_list
         except Exception as e:
             print(f"Ошибка при получении товаров: {e}")
             return []
+
 
 async def get_all_colors() -> list:
     async with async_session() as session:
@@ -348,6 +356,7 @@ async def get_all_colors() -> list:
             print(f"Ошибка при получении цветов: {e}")
             return []
 
+
 async def get_all_sizes() -> list:
     async with async_session() as session:
         try:
@@ -358,10 +367,10 @@ async def get_all_sizes() -> list:
             print(f"Ошибка при получении размеров: {e}")
             return []
 
+
 async def get_all_subcategories() -> list:
     async with async_session() as session:
         try:
-            # Выполняем join с таблицей Category для получения названия родительской категории
             stmt = select(Subcategory, Category).join(Category, Subcategory.category_id == Category.id)
             result = await session.execute(stmt)
             rows = result.all()
@@ -378,6 +387,7 @@ async def get_all_subcategories() -> list:
             print(f"Ошибка при получении подкатегорий: {e}")
             return []
 
+
 async def update_product(product_id: int, product_data: dict) -> bool:
     async with async_session() as session:
         try:
@@ -391,22 +401,28 @@ async def update_product(product_id: int, product_data: dict) -> bool:
             await session.rollback()
             return False
 
-async def add_product(product_data: dict) -> bool:
+
+async def add_product(product_data: dict) -> Optional[int]:
     async with async_session() as session:
         try:
             new_product = Product(**product_data)
             session.add(new_product)
             await session.commit()
-            return True
+            return new_product.id
         except Exception as e:
             print(f"Ошибка при добавлении продукта: {e}")
             await session.rollback()
-            return False
+            return None
+
 
 async def get_product_by_id(product_id: int):
     async with async_session() as session:
         try:
-            result = await session.execute(select(Product).where(Product.id == product_id))
+            result = await session.execute(
+                select(Product)
+                .options(selectinload(Product.photos))
+                .where(Product.id == product_id)
+            )
             product = result.scalar_one_or_none()
             return product
         except Exception as e:
@@ -422,6 +438,23 @@ async def delete_product(product_id: int) -> bool:
             return True
         except Exception as e:
             print(f"Ошибка при удалении продукта {product_id}: {e}")
+            await session.rollback()
+            return False
+
+
+async def update_product_photos(product_id: int, file_ids: List[str]) -> bool:
+    async with async_session() as session:
+        try:
+            # Удаляем все существующие фото для данного товара
+            await session.execute(delete(ProductPhoto).where(ProductPhoto.product_id == product_id))
+            # Добавляем новые записи для каждого file_id
+            for file_id in file_ids:
+                new_photo = ProductPhoto(file_id=file_id, product_id=product_id)
+                session.add(new_photo)
+            await session.commit()
+            return True
+        except Exception as e:
+            print(f"Ошибка при обновлении фотографий для продукта {product_id}: {e}")
             await session.rollback()
             return False
 

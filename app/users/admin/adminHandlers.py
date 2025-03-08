@@ -1162,13 +1162,16 @@ async def edit_product_handler(callback_query: CallbackQuery, state: FSMContext)
     sizes = await rq.get_all_sizes()
     subcategories = await rq.get_all_subcategories()
 
-    # Создаем Excel-файл с вкладками
+    # Создаем Excel‑файл с вкладками
     wb = Workbook()
     # Вкладка "Товары"
     ws_products = wb.active
     ws_products.title = "Товары"
-    headers = ["ID", "Название", "Цена", "Цветы", "Размеры", "Описание", "Тип продукта", "Материал", "Особенности",
-               "Использование", "Температурный диапазон", "ID подкатегории"]
+    headers = [
+        "ID", "Название", "Цена", "Цветы", "Размеры", "Описание", "Тип продукта",
+        "Материал", "Особенности", "Использование", "Температурный диапазон",
+        "ID подкатегории", "Фото"  # новый столбец для file_id
+    ]
     ws_products.append(headers)
     for product in products:
         row = [
@@ -1183,7 +1186,8 @@ async def edit_product_handler(callback_query: CallbackQuery, state: FSMContext)
             product.get("features"),
             product.get("usage"),
             product.get("temperature_range"),
-            product.get("subcategory_id")
+            product.get("subcategory_id"),
+            ", ".join(product.get("photo_file_ids", [])) if product.get("photo_file_ids") else ""
         ]
         ws_products.append(row)
 
@@ -1215,12 +1219,12 @@ async def edit_product_handler(callback_query: CallbackQuery, state: FSMContext)
     wb.save(file_stream)
     file_stream.seek(0)
 
-    # Создаем объект BufferedInputFile, передавая байты файла и имя
+    # Создаем объект BufferedInputFile для отправки файла
     input_file = BufferedInputFile(file_stream.getvalue(), filename="products.xlsx")
 
     caption_text = (
         "Скачайте таблицу для редактирования товаров.\n\n"
-        "Вкладка 'Товары' содержит данные о товарах.\n"
+        "Вкладка 'Товары' содержит данные о товарах с дополнительным столбцом 'Фото'.\n"
         "Вкладки 'Цвета', 'Размер' и 'Подкатегория' предоставляют справочную информацию.\n\n"
         "После редактирования отправьте файл боту для обновления данных.\n\n"
         "Если хотите отменить обновление, отправьте '-' вместо файла."
@@ -1231,6 +1235,7 @@ async def edit_product_handler(callback_query: CallbackQuery, state: FSMContext)
         caption=caption_text
     )
     user_data['bot_messages'].append(sent_message.message_id)
+    sent_message_add_screen_ids[tuid] = user_data
 
     # Переводим бота в состояние ожидания измененного Excel-файла
     await state.set_state(st.ProductEdit.waiting_for_excel_file.state)
@@ -1294,8 +1299,11 @@ async def process_edited_products(message: Message, state: FSMContext):
     # Получаем заголовки из первой строки
     headers = [cell.value for cell in rows[0]]
     header_map = {header: idx for idx, header in enumerate(headers) if header is not None}
-    required_headers = ["ID", "Название", "Цена", "Цветы", "Размеры", "Описание", "Тип продукта",
-                        "Материал", "Особенности", "Использование", "Температурный диапазон", "ID подкатегории"]
+    required_headers = [
+        "ID", "Название", "Цена", "Цветы", "Размеры", "Описание", "Тип продукта",
+        "Материал", "Особенности", "Использование", "Температурный диапазон",
+        "ID подкатегории", "Фото"
+    ]
     for rh in required_headers:
         if rh not in header_map:
             sent_message = await message.answer(f"В файле отсутствует обязательный столбец: {rh}",
@@ -1307,7 +1315,7 @@ async def process_edited_products(message: Message, state: FSMContext):
     added_count = 0
     deleted_count = 0
 
-    # Вспомогательная функция для парсинга списков ID из строки
+    # Вспомогательные функции
     def parse_ids(value):
         if value is None:
             return []
@@ -1317,10 +1325,19 @@ async def process_edited_products(message: Message, state: FSMContext):
             return [int(value)]
         return []
 
-    # Вспомогательная функция для сравнения текущих данных товара с новыми
+    def parse_file_ids(value):
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [x.strip() for x in value.split(",") if x.strip()]
+        return []
+
     def is_product_different(existing_product, new_data: dict) -> bool:
-        fields = ["name", "price", "color_ids", "size_ids", "description", "product_type", "material",
-                  "features", "usage", "temperature_range", "subcategory_id"]
+        fields = [
+            "name", "price", "color_ids", "size_ids", "description",
+            "product_type", "material", "features", "usage",
+            "temperature_range", "subcategory_id"
+        ]
         for field in fields:
             existing_value = getattr(existing_product, field, None)
             new_value = new_data.get(field)
@@ -1328,7 +1345,7 @@ async def process_edited_products(message: Message, state: FSMContext):
                 try:
                     if float(existing_value) != float(new_value):
                         return True
-                except:
+                except Exception:
                     if existing_value != new_value:
                         return True
             elif field in ["color_ids", "size_ids"]:
@@ -1339,12 +1356,11 @@ async def process_edited_products(message: Message, state: FSMContext):
                     return True
         return False
 
-    # Собираем множество ID, представленных в Excel (только для строк с указанным валидным ID)
+    # Собираем множество ID, представленных в Excel (для строк с валидным ID)
     excel_ids = set()
 
-    # Обрабатываем каждую строку, начиная со второй (данные)
+    # Обрабатываем каждую строку (начиная со второй)
     for row in rows[1:]:
-        # Читаем значения ячеек по заголовкам
         product_id = row[header_map["ID"]].value
         name = row[header_map["Название"]].value
         price = row[header_map["Цена"]].value
@@ -1357,6 +1373,7 @@ async def process_edited_products(message: Message, state: FSMContext):
         usage = row[header_map["Использование"]].value
         temperature_range = row[header_map["Температурный диапазон"]].value
         subcategory_id = row[header_map["ID подкатегории"]].value
+        photo_file_ids_str = row[header_map["Фото"]].value
 
         try:
             price = float(price)
@@ -1365,6 +1382,7 @@ async def process_edited_products(message: Message, state: FSMContext):
 
         color_ids = parse_ids(color_ids_str)
         size_ids = parse_ids(size_ids_str)
+        file_ids = parse_file_ids(photo_file_ids_str)
 
         product_data = {
             "name": name,
@@ -1380,6 +1398,7 @@ async def process_edited_products(message: Message, state: FSMContext):
             "subcategory_id": int(subcategory_id) if subcategory_id is not None else None
         }
 
+        # Если ID указан и валиден, пытаемся обновить существующий товар
         if product_id is not None:
             try:
                 product_id_int = int(product_id)
@@ -1390,35 +1409,46 @@ async def process_edited_products(message: Message, state: FSMContext):
             if product_id_int:
                 existing_product = await rq.get_product_by_id(product_id_int)
                 if existing_product:
-                    # Обновляем только если данные отличаются
-                    if is_product_different(existing_product, product_data):
-                        success = await rq.update_product(product_id_int, product_data)
-                        if success:
-                            updated_count += 1
-                    # Если данные не изменились, обновление не производится
-                else:
-                    success = await rq.add_product(product_data)
-                    if success:
-                        added_count += 1
-            else:
-                success = await rq.add_product(product_data)
-                if success:
-                    added_count += 1
-        else:
-            # Если ID не указан – добавляем новый товар
-            success = await rq.add_product(product_data)
-            if success:
-                added_count += 1
+                    # Проверяем, изменились ли данные товара
+                    product_changed = is_product_different(existing_product, product_data)
+                    # Получаем текущие file_id из БД (если есть)
+                    existing_file_ids = []
+                    if hasattr(existing_product, 'photos') and existing_product.photos:
+                        existing_file_ids = [p.file_id for p in existing_product.photos]
+                    file_ids_changed = set(existing_file_ids) != set(file_ids)
 
-    # Получаем все товары из БД и формируем множество их ID
+                    if product_changed:
+                        success = await rq.update_product(product_id_int, product_data)
+                    if file_ids_changed:
+                        success_photo = await rq.update_product_photos(product_id_int, file_ids)
+                    if product_changed or file_ids_changed:
+                        updated_count += 1
+                else:
+                    # Если товара с таким ID нет, добавляем новый
+                    new_product_id = await rq.add_product(product_data)
+                    if new_product_id:
+                        added_count += 1
+                        await rq.update_product_photos(new_product_id, file_ids)
+            else:
+                # Если ID некорректен, добавляем как новый товар
+                new_product_id = await rq.add_product(product_data)
+                if new_product_id:
+                    added_count += 1
+                    await rq.update_product_photos(new_product_id, file_ids)
+        else:
+            # Если ID отсутствует, добавляем товар
+            new_product_id = await rq.add_product(product_data)
+            if new_product_id:
+                added_count += 1
+                await rq.update_product_photos(new_product_id, file_ids)
+
+    # Удаляем товары, отсутствующие в Excel
     all_products = await rq.get_all_products()
     db_ids = {product["id"] for product in all_products if product.get("id") is not None}
-
-    # Находим ID товаров, которые есть в БД, но отсутствуют в Excel-файле – их необходимо удалить
     ids_to_delete = db_ids - excel_ids
 
-    for product_id in ids_to_delete:
-        if await rq.delete_product(product_id):
+    for prod_id in ids_to_delete:
+        if await rq.delete_product(prod_id):
             deleted_count += 1
 
     await state.clear()
@@ -1427,6 +1457,7 @@ async def process_edited_products(message: Message, state: FSMContext):
         reply_markup=kb.go_to_dashboard
     )
     user_data['bot_messages'].append(sent_message.message_id)
+
 
 
 async def get_report_filters(state: FSMContext) -> dict:
