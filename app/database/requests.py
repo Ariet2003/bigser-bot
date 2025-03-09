@@ -734,3 +734,92 @@ async def save_broadcast_history(text: str, media_type: str, media_file_id: str,
             target_group=target_group
         ))
         await session.commit()
+
+
+async def catalog_get_categories(page: int, per_page: int) -> List[Category]:
+    async with async_session() as session:
+        result = await session.scalars(
+            select(Category).offset((page - 1) * per_page).limit(per_page)
+        )
+        return result.all()
+
+async def catalog_get_total_categories() -> int:
+    async with async_session() as session:
+        count = await session.scalar(select(func.count(Category.id)))
+        return count or 0
+
+async def catalog_get_subcategories(category_id: int, page: int, per_page: int) -> List[Subcategory]:
+    async with async_session() as session:
+        result = await session.scalars(
+            select(Subcategory).where(Subcategory.category_id == category_id).offset((page - 1) * per_page).limit(per_page)
+        )
+        return result.all()
+
+async def catalog_get_total_subcategories(category_id: int) -> int:
+    async with async_session() as session:
+        count = await session.scalar(
+            select(func.count(Subcategory.id)).where(Subcategory.category_id == category_id)
+        )
+        return count or 0
+
+async def catalog_get_products_by_subcategory(subcategory_id: int) -> List[Product]:
+    async with async_session() as session:
+        result = await session.scalars(
+            select(Product).where(Product.subcategory_id == subcategory_id)
+        )
+        return result.all()
+
+async def catalog_get_product_photos(product_id: int) -> List[ProductPhoto]:
+    async with async_session() as session:
+        result = await session.scalars(
+            select(ProductPhoto).where(ProductPhoto.product_id == product_id)
+        )
+        return result.all()
+
+async def catalog_get_user_info_by_id(telegram_id: str) -> dict:
+    async with async_session() as session:
+        result = await session.scalar(
+            select(User).where(User.telegram_id == telegram_id)
+        )
+        if result:
+            return {"full_name": result.full_name, "address": result.address, "phone_number": result.phone_number}
+        else:
+            return {}
+
+async def catalog_create_order(user_id: int, product: Product, quantity: int, chosen_size: Optional[int],
+                       chosen_color: Optional[int], delivery_method: str) -> bool:
+    async with async_session() as session:
+        try:
+            new_order = Order(
+                user_id=user_id,
+                processed_by_id=None,
+                order_datetime=datetime.now(),
+                status="ожидание",
+                delivery_method=delivery_method
+            )
+            session.add(new_order)
+            await session.flush()  # для получения new_order.id
+            new_order_item = OrderItem(
+                order_id=new_order.id,
+                product_id=product.id,
+                quantity=quantity,
+                chosen_size=chosen_size,
+                chosen_color=chosen_color
+            )
+            session.add(new_order_item)
+            await session.commit()
+            return True
+        except SQLAlchemyError as e:
+            print(f"Error creating order: {e}")
+            await session.rollback()
+            return False
+
+async def catalog_get_size_name(size_id: int) -> str:
+    async with async_session() as session:
+        result = await session.scalar(select(Size).where(Size.id == size_id))
+        return result.size if result else str(size_id)
+
+async def catalog_get_color_name(color_id: int) -> str:
+    async with async_session() as session:
+        result = await session.scalar(select(Color).where(Color.id == color_id))
+        return result.name if result else str(color_id)

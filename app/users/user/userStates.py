@@ -12,3 +12,7 @@ class ChangePhone(StatesGroup):
 
 class ChangeAddress(StatesGroup):
     write_address = State()
+
+
+class CartOrder(StatesGroup):
+    customizing = State()
