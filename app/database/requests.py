@@ -786,7 +786,7 @@ async def catalog_get_user_info_by_id(telegram_id: str) -> dict:
         else:
             return {}
 
-async def catalog_create_order(user_id: int, product: Product, quantity: int, chosen_size: Optional[int],
+async def add_to_cart(user_id: int, product: Product, quantity: int, chosen_size: Optional[int],
                        chosen_color: Optional[int], delivery_method: str) -> bool:
     async with async_session() as session:
         try:
@@ -794,7 +794,7 @@ async def catalog_create_order(user_id: int, product: Product, quantity: int, ch
                 user_id=user_id,
                 processed_by_id=None,
                 order_datetime=datetime.now(),
-                status="ожидание",
+                status="В корзине",
                 delivery_method=delivery_method
             )
             session.add(new_order)

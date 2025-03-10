@@ -539,7 +539,7 @@ async def cart_confirm(callback_query: CallbackQuery, state: FSMContext):
     chosen_color = available_colors[color_index] if available_colors else None
     user_info = await rq.get_user_info_by_id(str(user_id))
     delivery_method = "доставка" if user_info.get("address") else "Самовывоз"
-    order_created = await rq.catalog_create_order(user_id, product, quantity, chosen_size, chosen_color, delivery_method)
+    order_created = await rq.add_to_cart(user_id, product, quantity, chosen_size, chosen_color, delivery_method)
     if order_created:
         # Возвращаемся в подкатегории, передавая category_id и номер страницы (например, 1)
         keyboard = kb.get_order_success_keyboard(category_id, 1)
