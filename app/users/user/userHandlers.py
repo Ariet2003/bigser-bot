@@ -69,7 +69,6 @@ async def go_to_dashboard(callback_query: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == 'user_settings')
 async def user_settings(callback_query: CallbackQuery, state: FSMContext):
     info = await rq.get_user_info_by_id(str(callback_query.from_user.id))
-    print(callback_query.from_user.id)
     # Формируем текст для отображения, учитывая, что info может содержать ключ "answer"
     if "answer" in info:
         caption = f"Ошибка: {info['answer']}"
@@ -564,4 +563,550 @@ async def order_success_back(callback_query: CallbackQuery, state: FSMContext):
          media=InputMediaPhoto(media=utils.user_second_png, caption=text),
          reply_markup=keyboard
     )
+
+
+async def safe_edit_message(message: Message, text: str, reply_markup):
+    if message.text is not None:
+        return await message.edit_text(text, reply_markup=reply_markup)
+    elif message.caption is not None:
+        return await message.edit_caption(caption=text, reply_markup=reply_markup)
+    else:
+        return await message.answer(text, reply_markup=reply_markup)
+
+
+# 1. Обработка кнопки "🛒 Корзина"
+@router.callback_query(F.data == 'user_cart')
+async def cart_main(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    user_id = callback_query.from_user.id
+    cart_orders = await rq.get_cart_order(str(user_id))
+    items = []
+    if cart_orders:
+        for order in cart_orders:
+            items.extend(order.order_items)
+    if not items:
+        text = "Ваша корзина пуста."
+    else:
+        lines = []
+        total_cost = 0
+        for idx, item in enumerate(items, start=1):
+            product = await rq.get_product(item.product_id)
+            color_name = await rq.catalog_get_color_name(item.chosen_color) if item.chosen_color else "N/A"
+            size_name = await rq.catalog_get_size_name(item.chosen_size) if item.chosen_size else "N/A"
+            line = (f"{idx}. {product.name} ({color_name}, {size_name})\n"
+                    f"{item.quantity} шт * {product.price} = {item.quantity * float(product.price)}")
+            lines.append(line)
+            total_cost += item.quantity * float(product.price)
+        text = "\n\n".join(lines)
+        text += f"\n\nОбщая стоимость: {total_cost}"
+    keyboard = kb.get_cart_main_keyboard()
+    await callback_query.message.edit_media(
+        media=InputMediaPhoto(media=utils.user_second_png, caption=text),
+        reply_markup=keyboard
+    )
+
+
+# 2. Очистка корзины — запрос подтверждения
+@router.callback_query(F.data == 'cart_clear')
+async def cart_clear_confirm(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    keyboard = kb.get_cart_clear_confirmation_keyboard()
+    text = "Вы действительно хотите очистить корзину?"
+    await safe_edit_message(callback_query.message, text, reply_markup=keyboard)
+
+
+@router.callback_query(F.data == 'cart_clear_yes')
+async def cart_clear_yes(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    user_id = callback_query.from_user.id
+    success = await rq.clear_cart(str(user_id))
+    text = "Ваша корзина очищена." if success else "Ошибка при очистке корзины."
+    keyboard = kb.get_cart_main_keyboard()
+    await safe_edit_message(callback_query.message, text, reply_markup=keyboard)
+
+
+@router.callback_query(F.data == 'cart_clear_no')
+async def cart_clear_no(callback_query: CallbackQuery, state: FSMContext):
+    await cart_main(callback_query, state)
+
+
+# 3. Редактирование корзины — вывод списка товаров
+@router.callback_query(F.data == 'cart_edit')
+async def cart_edit(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    user_id = callback_query.from_user.id
+    cart_orders = await rq.get_cart_order(str(user_id))
+    items = []
+    if cart_orders:
+        for order in cart_orders:
+            items.extend(order.order_items)
+    if not items:
+        text = "Ваша корзина пуста."
+        keyboard = kb.get_cart_main_keyboard()
+        await safe_edit_message(callback_query.message, text, reply_markup=keyboard)
+        return
+    buttons = []
+    for item in items:
+        product = await rq.get_product(item.product_id)
+        color_name = await rq.catalog_get_color_name(item.chosen_color) if item.chosen_color else "N/A"
+        size_name = await rq.catalog_get_size_name(item.chosen_size) if item.chosen_size else "N/A"
+        button_text = f"{product.name} ({color_name}, {size_name}) - {item.quantity} шт"
+        callback_data = f"cart_edit_item:{item.id}"
+        buttons.append((button_text, callback_data))
+    keyboard = kb.get_cart_edit_list_keyboard(buttons)
+    text = "Здесь можно редактировать товары:"
+    # Если сообщение содержит фото – обновляем через edit_media, иначе через safe_edit_message
+    if callback_query.message.photo:
+        await callback_query.message.edit_media(
+            media=InputMediaPhoto(media=utils.user_second_png, caption=text),
+            reply_markup=keyboard
+        )
+    else:
+        await safe_edit_message(callback_query.message, text, reply_markup=keyboard)
+
+
+
+# 4. Выбор товара для редактирования
+@router.callback_query(F.data.startswith('cart_edit_item:'))
+async def cart_edit_item(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    data = callback_query.data.split(':')
+    order_item_id = int(data[1])
+    order_item = await rq.get_order_item(order_item_id)
+    product = await rq.get_product(order_item.product_id)
+    photos = await rq.catalog_get_product_photos(product.id) if hasattr(rq, 'catalog_get_product_photos') else None
+    photo_file = photos[0].file_id if photos else utils.user_second_png
+    current_size = order_item.chosen_size
+    current_color = order_item.chosen_color
+    current_qty = order_item.quantity
+    current_size_name = await rq.catalog_get_size_name(current_size) if current_size else "N/A"
+    current_color_name = await rq.catalog_get_color_name(current_color) if current_color else "N/A"
+    available_sizes = product.size_ids if product.size_ids else []
+    available_colors = product.color_ids if product.color_ids else []
+    available_size_names = [await rq.catalog_get_size_name(sid) for sid in available_sizes]
+    available_color_names = [await rq.catalog_get_color_name(cid) for cid in available_colors]
+    keyboard = kb.get_cart_item_edit_keyboard(
+        order_item_id,
+        product.id,
+        current_size_name,
+        current_color_name,
+        current_qty,
+        available_size_names,
+        available_color_names
+    )
+    text = f"{product.name}\nОписание: {product.description}\nЦена: {product.price}"
+    await callback_query.message.edit_media(
+        media=InputMediaPhoto(media=photo_file, caption=text),
+        reply_markup=keyboard
+    )
+
+
+# 5. Редактирование параметров выбранного товара
+@router.callback_query(F.data.startswith('cart_item_edit:'))
+async def cart_item_edit(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    data = callback_query.data.split(':')
+    order_item_id = int(data[1])
+    field = data[2]  # может быть "size", "color", "qty", "delete", "confirm", "back"
+
+    if field == "delete":
+        keyboard = kb.get_cart_item_delete_confirmation_keyboard(order_item_id)
+        text = "Вы уверены, что хотите удалить этот товар из корзины?"
+        await safe_edit_message(callback_query.message, text, reply_markup=keyboard)
+        return
+
+    if field == "back":
+        # При нажатии "Назад" возвращаемся к списку редактирования корзины
+        await cart_edit(callback_query, state)
+        return
+
+    if field == "confirm":
+        # Если нажата кнопка "Подтвердить", можно выполнить логику подтверждения изменений.
+        # В данном примере просто возвращаемся к списку редактирования.
+        await cart_edit(callback_query, state)
+        return
+
+    # Если команда ожидает параметр (например, "inc" или "dec")
+    if len(data) < 4:
+        await callback_query.message.answer("Ошибка: недостаточно параметров для обновления.")
+        return
+
+    action = data[3]  # "inc" или "dec"
+    success = await rq.update_cart_item_field(order_item_id, field, action)
+    if success:
+        order_item = await rq.get_order_item(order_item_id)
+        product = await rq.get_product(order_item.product_id)
+        photos = await rq.catalog_get_product_photos(product.id) if hasattr(rq, 'catalog_get_product_photos') else None
+        photo_file = photos[0].file_id if photos else utils.user_second_png
+        current_size = order_item.chosen_size
+        current_color = order_item.chosen_color
+        current_qty = order_item.quantity
+        current_size_name = await rq.catalog_get_size_name(current_size) if current_size else "N/A"
+        current_color_name = await rq.catalog_get_color_name(current_color) if current_color else "N/A"
+        available_sizes = product.size_ids if product.size_ids else []
+        available_colors = product.color_ids if product.color_ids else []
+        available_size_names = [await rq.catalog_get_size_name(sid) for sid in available_sizes]
+        available_color_names = [await rq.catalog_get_color_name(cid) for cid in available_colors]
+        keyboard = kb.get_cart_item_edit_keyboard(
+            order_item_id,
+            product.id,
+            current_size_name,
+            current_color_name,
+            current_qty,
+            available_size_names,
+            available_color_names
+        )
+        text = f"{product.name}\nОписание: {product.description}\nЦена: {product.price}"
+        # Используем edit_media, если в сообщении есть фото, иначе safe_edit_message
+        if callback_query.message.photo:
+            await callback_query.message.edit_media(
+                media=InputMediaPhoto(media=photo_file, caption=text),
+                reply_markup=keyboard
+            )
+        else:
+            await safe_edit_message(callback_query.message, text, reply_markup=keyboard)
+    else:
+        await callback_query.message.answer("Ошибка при обновлении товара.")
+
+
+
+# 6. Подтверждение удаления товара из корзины
+@router.callback_query(F.data.startswith('cart_item_delete_confirm:'))
+async def cart_item_delete_confirm(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    data = callback_query.data.split(':')
+    order_item_id = int(data[1])
+    success = await rq.delete_cart_item(order_item_id)
+    text = "Товар удалён из корзины." if success else "Ошибка при удалении товара."
+    user_id = callback_query.from_user.id
+    cart_orders = await rq.get_cart_order(str(user_id))
+    items = []
+    if cart_orders:
+        for order in cart_orders:
+            items.extend(order.order_items)
+    if items:
+        buttons = []
+        for item in items:
+            product = await rq.get_product(item.product_id)
+            color_name = await rq.catalog_get_color_name(item.chosen_color) if item.chosen_color else "N/A"
+            size_name = await rq.catalog_get_size_name(item.chosen_size) if item.chosen_size else "N/A"
+            button_text = f"{product.name} ({color_name}, {size_name}) - {item.quantity} шт"
+            callback_data = f"cart_edit_item:{item.id}"
+            buttons.append((button_text, callback_data))
+        keyboard = kb.get_cart_edit_list_keyboard(buttons)
+    else:
+        keyboard = kb.get_cart_main_keyboard()
+    await safe_edit_message(callback_query.message, text, reply_markup=keyboard)
+
+
+# 7. Оформление заказа — проверка данных пользователя и сбор информации
+async def order_submit_event(event, state: FSMContext):
+    # Если event является CallbackQuery, используем его поле message,
+    # иначе считаем, что event уже является Message
+    if isinstance(event, CallbackQuery):
+        base_msg: Message = event.message
+        await event.answer()  # Ответ на callback
+    else:
+        base_msg: Message = event
+
+    tuid = base_msg.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(base_msg.message_id)
+
+    user_id = tuid
+    user_info = await rq.get_user_info_by_id(str(user_id))
+
+    # Запрашиваем ФИО, если его нет (с учетом удаления пробелов)
+    if user_info.get("full_name", "").strip() == "":
+        await state.set_state(st.OrderInfo.waiting_fullname)
+        text = "Как вам обращаться? Введите ФИО:"
+        await safe_edit_message(base_msg, text, reply_markup=None)
+        return
+
+    # Запрашиваем номер телефона, если его нет (аналогично можно добавить .strip())
+    if user_info.get("phone_number", "").strip() == "":
+        await delete_previous_messages(base_msg, tuid)
+        await state.set_state(st.OrderInfo.waiting_phone)
+        text = "Как с вами связаться? Введите номер телефона (формат +996XXXXXXXXX):"
+        sent_message = await base_msg.answer_photo(
+            photo=utils.user_second_png,
+            caption=text
+        )
+        user_data['bot_messages'].append(sent_message.message_id)
+        return
+
+    await state.set_state(st.OrderInfo.waiting_address)
+    await delete_previous_messages(base_msg, tuid)
+    text = ("Напишите адрес, если хотите доставку. "
+            "Если не хотите, нажмите 'Нет, не хочу доставку'.")
+    keyboard = kb.get_order_address_keyboard()
+    sent_message = await base_msg.answer_photo(
+        photo=utils.user_second_png,
+        caption=text,
+        reply_markup=keyboard
+    )
+    user_data['bot_messages'].append(sent_message.message_id)
+
+
+
+
+
+@router.callback_query(F.data == 'order_submit')
+async def order_submit_callback(callback_query: CallbackQuery, state: FSMContext):
+    await order_submit_event(callback_query, state)
+
+
+@router.message(st.OrderInfo.waiting_fullname)
+async def process_fullname(message: Message, state: FSMContext):
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    fullname = message.text.strip()
+    user_id = message.from_user.id
+    await rq.update_user_fullname(str(user_id), fullname)
+    await state.clear()
+    await order_submit_event(message, state)
+
+
+@router.message(st.OrderInfo.waiting_phone)
+async def process_phone(message: Message, state: FSMContext):
+    new_phone = message.text.strip()
+    import re
+    if not re.fullmatch(r'\+996\d{9}', new_phone):
+        tuid = message.chat.id
+        user_data = sent_message_add_screen_ids[tuid]
+        user_data['user_messages'].append(message.message_id)
+        await delete_previous_messages(message, tuid)
+        sent_message = await message.answer_photo(
+            photo=utils.user_second_png,
+            caption="Неверный формат номера. Попробуйте ещё раз.")
+        user_data['bot_messages'].append(sent_message.message_id)
+        return
+    user_id = message.from_user.id
+    await rq.update_user_phone(str(user_id), new_phone)
+    await state.clear()
+    await order_submit_event(message, state)
+
+
+@router.callback_query(F.data == 'order_address_skip')
+async def order_address_skip(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    user_id = callback_query.from_user.id
+    await rq.update_user_address(str(user_id), "")
+    await state.clear()
+    await order_confirmation_summary(callback_query, state)
+
+
+@router.message(st.OrderInfo.waiting_address)
+async def process_address(message: Message, state: FSMContext):
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    address = message.text.strip()
+    user_id = message.from_user.id
+    await rq.update_user_address(str(user_id), address)
+    await state.clear()
+    await order_confirmation_summary(message, state)
+
+
+async def order_confirmation_summary(event, state: FSMContext):
+    # Определяем базовое сообщение в зависимости от типа event
+    if isinstance(event, CallbackQuery):
+        base_message: Message = event.message
+    else:
+        base_message: Message = event
+
+    # Получаем chat_id и message_id из базового сообщения
+    chat_id = base_message.chat.id
+    msg_id = base_message.message_id
+
+    # Работа с вашим хранилищем сообщений (пример)
+    user_data = sent_message_add_screen_ids[chat_id]
+    user_data['user_messages'].append(msg_id)
+    await delete_previous_messages(base_message, chat_id)
+
+    user_id = event.from_user.id
+    cart_orders = await rq.get_cart_order(str(user_id))
+    items = []
+    if cart_orders:
+        for order in cart_orders:
+            items.extend(order.order_items)
+    if not items:
+        text = "Ваша корзина пуста."
+        keyboard = kb.get_cart_main_keyboard()
+        msg = event.message if hasattr(event, 'message') else event
+        await safe_edit_message(msg, text, reply_markup=keyboard)
+        return
+    lines = []
+    total_cost = 0
+    for idx, item in enumerate(items, start=1):
+        product = await rq.get_product(item.product_id)
+        color_name = await rq.catalog_get_color_name(item.chosen_color) if item.chosen_color else "N/A"
+        size_name = await rq.catalog_get_size_name(item.chosen_size) if item.chosen_size else "N/A"
+        line = (f"{idx}. {product.name} ({color_name}, {size_name}) - {item.quantity} шт * {product.price} = {item.quantity * float(product.price)}")
+        lines.append(line)
+        total_cost += item.quantity * float(product.price)
+    user_info = await rq.get_user_info_by_id(str(user_id))
+    order_type = "доставка" if user_info.get("address") else "Самовывоз"
+    summary = "\n".join(lines)
+    text = (f"{summary}\n\nОбщая стоимость: {total_cost}\n\n"
+            f"Адрес: {user_info.get('address', 'N/A')}\n"
+            f"Номер: {user_info.get('phone_number', 'N/A')}\n"
+            f"ФИО: {user_info.get('full_name', 'N/A')}\n"
+            f"Тип заказа: {order_type}")
+    keyboard = kb.get_order_confirm_keyboard()
+    msg = event.message if hasattr(event, 'message') else event
+    await msg.answer_photo(
+        photo=utils.user_second_png,
+        caption=text,
+        reply_markup=keyboard
+    )
+    # await safe_edit_message(msg, text, reply_markup=keyboard)
+
+
+# 8. Финальное подтверждение заказа — обновление статуса заказа
+@router.callback_query(F.data == 'order_final_confirm')
+async def order_final_confirm(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    user_id = callback_query.from_user.id
+    cart_orders = await rq.get_cart_order(str(user_id))
+    if not cart_orders:
+        await safe_edit_message(callback_query.message, "Ваша корзина пуста.", reply_markup=kb.get_cart_main_keyboard())
+        return
+    # Обновляем все заказы пользователя
+    success = await rq.submit_all_orders(str(user_id))
+    text = "Заказ успешно оформлен! Менеджер скоро свяжется с вами." if success else "Ошибка при оформлении заказа. Попробуйте ещё раз."
+    keyboard = kb.get_order_success_final_keyboard()
+    await safe_edit_message(callback_query.message, text, reply_markup=keyboard)
+
+
+# 9. Редактирование данных пользователя (ФИО, телефон, адрес)
+@router.callback_query(F.data == 'order_edit_data')
+async def order_edit_data(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    text = "Измените данные:\nВыберите, что редактировать:"
+    keyboard = kb.get_order_edit_data_keyboard()
+    await safe_edit_message(callback_query.message, text, reply_markup=keyboard)
+
+@router.callback_query(F.data == 'order_edit_cart')
+async def order_edit_data(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    await cart_main(callback_query, state)
+
+
+@router.callback_query(F.data == 'edit_fullname')
+async def edit_fullname(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+
+    await callback_query.answer()
+    await state.set_state(st.UserData.waiting_fullname)
+    text = "Введите новое ФИО:"
+    sent_message = await callback_query.message.edit_media(
+        media=InputMediaPhoto(media=utils.user_second_png, caption=text)
+    )
+    user_data['bot_messages'].append(sent_message.message_id)
+
+
+@router.message(st.UserData.waiting_fullname)
+async def process_edit_fullname(message: Message, state: FSMContext):
+    new_fullname = message.text.strip()
+    user_id = message.from_user.id
+    await rq.update_user_fullname(str(user_id), new_fullname)
+    await state.clear()
+    await order_confirmation_summary(message, state)
+
+
+@router.callback_query(F.data == 'edit_phone')
+async def edit_phone(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+
+    await callback_query.answer()
+    await state.set_state(st.UserData.waiting_phone)
+
+    text = "Введите новый номер телефона (формат +996XXXXXXXXX):"
+    sent_message = await callback_query.message.edit_media(
+        media=InputMediaPhoto(media=utils.user_second_png, caption=text)
+    )
+    user_data['bot_messages'].append(sent_message.message_id)
+
+
+@router.message(st.UserData.waiting_phone)
+async def process_edit_phone(message: Message, state: FSMContext):
+    new_phone = message.text.strip()
+    import re
+    if not re.fullmatch(r'\+996\d{9}', new_phone):
+        tuid = message.chat.id
+        user_data = sent_message_add_screen_ids[tuid]
+        user_data['user_messages'].append(message.message_id)
+        await delete_previous_messages(message, tuid)
+        sent_message = await message.answer_photo(
+            photo=utils.user_second_png,
+            caption="Неверный формат номера. Попробуйте ещё раз.")
+        user_data['bot_messages'].append(sent_message.message_id)
+        return
+    user_id = message.from_user.id
+    await rq.update_user_phone(str(user_id), new_phone)
+    await state.clear()
+    await order_confirmation_summary(message, state)
+
+
+@router.callback_query(F.data == 'edit_address')
+async def edit_address(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+
+    await callback_query.answer()
+    await state.set_state(st.UserData.waiting_address)
+    keyboard = kb.get_address_edit_keyboard()
+
+    text = "Введите новый адрес:"
+    sent_message = await callback_query.message.edit_media(
+        media=InputMediaPhoto(media=utils.user_second_png, caption=text)
+    )
+    user_data['bot_messages'].append(sent_message.message_id)
+
+
+@router.message(st.UserData.waiting_address)
+async def process_edit_address(message: Message, state: FSMContext):
+    new_address = message.text.strip()
+    user_id = message.from_user.id
+    await rq.update_user_address(str(user_id), new_address)
+    await state.clear()
+    await order_confirmation_summary(message, state)
+
+
+@router.callback_query(F.data == 'address_edit_skip')
+async def address_edit_skip(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    user_id = callback_query.from_user.id
+    await rq.update_user_address(str(user_id), "")
+    await state.clear()
+    await order_confirmation_summary(callback_query.message, state)
+
+
+# 10. Кнопка "Назад" в экране подтверждения заказа — возврат в корзину
+@router.callback_query(F.data == 'order_confirm_back')
+async def order_confirm_back(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    await cart_main(callback_query, state)
+
+@router.callback_query(F.data == 'order_confirm_back_in')
+async def order_confirm_back(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    await order_confirmation_summary(callback_query, state)
+
+@router.callback_query(F.data == 'go_to_user_cart')
+async def go_to_user_cart(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    # Возвращаем пользователя в режим просмотра корзины
+    await cart_main(callback_query, state)
 

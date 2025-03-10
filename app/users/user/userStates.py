@@ -16,3 +16,14 @@ class ChangeAddress(StatesGroup):
 
 class CartOrder(StatesGroup):
     customizing = State()
+
+
+class OrderInfo(StatesGroup):
+    waiting_fullname = State()
+    waiting_phone = State()
+    waiting_address = State()
+
+class UserData(StatesGroup):
+    waiting_fullname = State()
+    waiting_phone = State()
+    waiting_address = State()

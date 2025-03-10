@@ -134,3 +134,108 @@ def get_order_success_keyboard(category_id, page):
     return keyboard
 
 
+def get_cart_main_keyboard():
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🛒 Очистить", callback_data="cart_clear"),
+            InlineKeyboardButton(text="🛒 Редактировать", callback_data="cart_edit")
+        ],
+        [InlineKeyboardButton(text="Оформить заказ", callback_data="order_submit")],
+        [InlineKeyboardButton(text="Назад", callback_data="go_to_user_dashboard")]
+    ])
+    return keyboard
+
+def get_cart_clear_confirmation_keyboard():
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="Да, очистить", callback_data="cart_clear_yes"),
+            InlineKeyboardButton(text="Назад", callback_data="cart_clear_no")
+        ]
+    ])
+    return keyboard
+
+def get_cart_edit_list_keyboard(buttons):
+    """
+    Принимает список кортежей: (текст_кнопки, callback_data)
+    """
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[])
+    for button_text, callback_data in buttons:
+        keyboard.inline_keyboard.append([
+            InlineKeyboardButton(text=button_text, callback_data=callback_data)
+        ])
+    keyboard.inline_keyboard.append([InlineKeyboardButton(text="Назад", callback_data="go_to_user_cart")])
+    return keyboard
+
+def get_cart_item_edit_keyboard(order_item_id, product_id, current_size, current_color, quantity, available_size_names, available_color_names):
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[])
+    size_row = [
+        InlineKeyboardButton(text="-", callback_data=f"cart_item_edit:{order_item_id}:size:dec"),
+        InlineKeyboardButton(text=f"Размер: {current_size}", callback_data="ignore"),
+        InlineKeyboardButton(text="+", callback_data=f"cart_item_edit:{order_item_id}:size:inc")
+    ]
+    keyboard.inline_keyboard.append(size_row)
+    color_row = [
+        InlineKeyboardButton(text="⬅️", callback_data=f"cart_item_edit:{order_item_id}:color:dec"),
+        InlineKeyboardButton(text=f"Цвет: {current_color}", callback_data="ignore"),
+        InlineKeyboardButton(text="➡️", callback_data=f"cart_item_edit:{order_item_id}:color:inc")
+    ]
+    keyboard.inline_keyboard.append(color_row)
+    qty_row = [
+        InlineKeyboardButton(text="-", callback_data=f"cart_item_edit:{order_item_id}:qty:dec"),
+        InlineKeyboardButton(text=f"{quantity} шт", callback_data="ignore"),
+        InlineKeyboardButton(text="+", callback_data=f"cart_item_edit:{order_item_id}:qty:inc")
+    ]
+    keyboard.inline_keyboard.append(qty_row)
+    final_row = [
+        InlineKeyboardButton(text="Удалить", callback_data=f"cart_item_edit:{order_item_id}:delete"),
+        InlineKeyboardButton(text="Подтвердить", callback_data=f"cart_item_edit:{order_item_id}:confirm"),
+        InlineKeyboardButton(text="Назад", callback_data=f"cart_item_edit:{order_item_id}:back")
+    ]
+    keyboard.inline_keyboard.append(final_row)
+    return keyboard
+
+def get_cart_item_delete_confirmation_keyboard(order_item_id):
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="Да, удалить", callback_data=f"cart_item_delete_confirm:{order_item_id}"),
+            InlineKeyboardButton(text="Назад", callback_data=f"cart_item_edit:{order_item_id}:back")
+        ]
+    ])
+    return keyboard
+
+def get_order_confirm_keyboard():
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Подтвердить, оформить заказ", callback_data="order_final_confirm")],
+        [InlineKeyboardButton(text="✏️ Корзину", callback_data="order_edit_cart"),
+         InlineKeyboardButton(text="✏️ Данные", callback_data="order_edit_data")],
+        [InlineKeyboardButton(text="Назад", callback_data="order_confirm_back")]
+    ])
+    return keyboard
+
+def get_order_address_keyboard():
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Нет, не хочу доставку", callback_data="order_address_skip")]
+    ])
+    return keyboard
+
+def get_order_edit_data_keyboard():
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="ФИО", callback_data="edit_fullname"),
+         InlineKeyboardButton(text="Номер телефона", callback_data="edit_phone")],
+        [InlineKeyboardButton(text="Адрес", callback_data="edit_address")],
+        [InlineKeyboardButton(text="Назад", callback_data="order_confirm_back_in")]
+    ])
+    return keyboard
+
+def get_address_edit_keyboard():
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Нет, не хочу доставку", callback_data="address_edit_skip")],
+        [InlineKeyboardButton(text="Назад", callback_data="order_edit_data")]
+    ])
+    return keyboard
+
+def get_order_success_final_keyboard():
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="В личный кабинет", callback_data="go_to_user_dashboard")]
+    ])
+    return keyboard

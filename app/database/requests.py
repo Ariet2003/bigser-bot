@@ -823,3 +823,192 @@ async def catalog_get_color_name(color_id: int) -> str:
     async with async_session() as session:
         result = await session.scalar(select(Color).where(Color.id == color_id))
         return result.name if result else str(color_id)
+
+
+# Возвращает заказ (Order) со статусом "В корзине" для пользователя
+async def get_cart_order(user_id: str):
+    async with async_session() as session:
+        results = await session.scalars(
+            select(Order)
+            .options(selectinload(Order.order_items))
+            .where(Order.user_id == user_id, Order.status=="В корзине")
+        )
+        return results.all()
+
+
+async def get_product(product_id: int):
+    async with async_session() as session:
+        return await session.get(Product, product_id)
+
+# Очищает корзину (обновляет статус заказа на "Удален")
+async def clear_cart(user_id: str) -> bool:
+    async with async_session() as session:
+        try:
+            stmt = update(Order).where(Order.user_id == user_id, Order.status=="В корзине").values(status="Удален")
+            await session.execute(stmt)
+            await session.commit()
+            return True
+        except SQLAlchemyError as e:
+            print(f"Error clearing cart: {e}")
+            await session.rollback()
+            return False
+
+
+async def get_order_item(order_item_id: int):
+    async with async_session() as session:
+        return await session.get(OrderItem, order_item_id)
+
+# Обновляет поле заказа (размер, цвет, количество) для OrderItem
+async def update_cart_item_field(order_item_id: int, field: str, action: str) -> bool:
+    async with async_session() as session:
+        try:
+            order_item = await session.get(OrderItem, order_item_id)
+            if not order_item:
+                return False
+            product = await session.get(Product, order_item.product_id)
+            if field == "size":
+                available = product.size_ids or []
+                if not available:
+                    return False
+                current = order_item.chosen_size if order_item.chosen_size is not None else available[0]
+                try:
+                    idx = available.index(current)
+                except ValueError:
+                    idx = 0
+                new_idx = (idx + 1) % len(available) if action=="inc" else (idx - 1 + len(available)) % len(available)
+                order_item.chosen_size = available[new_idx]
+            elif field == "color":
+                available = product.color_ids or []
+                if not available:
+                    return False
+                current = order_item.chosen_color if order_item.chosen_color is not None else available[0]
+                try:
+                    idx = available.index(current)
+                except ValueError:
+                    idx = 0
+                new_idx = (idx + 1) % len(available) if action=="inc" else (idx - 1 + len(available)) % len(available)
+                order_item.chosen_color = available[new_idx]
+            elif field == "qty":
+                if action=="inc":
+                    order_item.quantity += 1
+                else:
+                    order_item.quantity = max(1, order_item.quantity - 1)
+            await session.commit()
+            return True
+        except SQLAlchemyError as e:
+            print(f"Error updating cart item field: {e}")
+            await session.rollback()
+            return False
+
+# Удаляет OrderItem (можно пометить как удалённый)
+async def delete_cart_item(order_item_id: int) -> bool:
+    async with async_session() as session:
+        try:
+            # Физически удаляем запись:
+            order_item = await session.get(OrderItem, order_item_id)
+            if order_item:
+                await session.delete(order_item)
+                await session.commit()
+            return True
+        except SQLAlchemyError as e:
+            print(f"Error deleting cart item: {e}")
+            await session.rollback()
+            return False
+
+# Обновляет статус заказа (Order) на "В обработке"
+async def submit_order(order_id: int) -> bool:
+    async with async_session() as session:
+        try:
+            stmt = update(Order).where(Order.id == order_id).values(status="В обработке")
+            await session.execute(stmt)
+            await session.commit()
+            return True
+        except SQLAlchemyError as e:
+            print(f"Error submitting order: {e}")
+            await session.rollback()
+            return False
+
+# Функции для получения имени размера и цвета по id
+async def catalog_get_size_name(size_id: int) -> str:
+    async with async_session() as session:
+        size = await session.get(Size, size_id)
+        return size.size if size else str(size_id)
+
+async def catalog_get_color_name(color_id: int) -> str:
+    async with async_session() as session:
+        color = await session.get(Color, color_id)
+        return color.name if color else str(color_id)
+
+async def update_user_fullname(telegram_id: str, fullname: str) -> bool:
+    async with async_session() as session:
+        try:
+            stmt = select(User).where(User.telegram_id == telegram_id)
+            user = await session.scalar(stmt)
+            if not user:
+                return False
+            user.full_name = fullname
+            await session.commit()
+            return True
+        except SQLAlchemyError as e:
+            print(f"Error updating user fullname: {e}")
+            await session.rollback()
+            return False
+
+async def update_user_phone(telegram_id: str, phone: str) -> bool:
+    async with async_session() as session:
+        try:
+            stmt = select(User).where(User.telegram_id == telegram_id)
+            user = await session.scalar(stmt)
+            if not user:
+                return False
+            user.phone_number = phone
+            await session.commit()
+            return True
+        except SQLAlchemyError as e:
+            print(f"Error updating user phone: {e}")
+            await session.rollback()
+            return False
+
+async def update_user_address(telegram_id: str, address: str) -> bool:
+    async with async_session() as session:
+        try:
+            stmt = select(User).where(User.telegram_id == telegram_id)
+            user = await session.scalar(stmt)
+            if not user:
+                return False
+            user.address = address
+            await session.commit()
+            return True
+        except SQLAlchemyError as e:
+            print(f"Error updating user address: {e}")
+            await session.rollback()
+            return False
+
+async def get_user_info_by_id(telegram_id: str) -> dict:
+    async with async_session() as session:
+        try:
+            stmt = select(User).where(User.telegram_id == telegram_id)
+            user = await session.scalar(stmt)
+            if not user:
+                return {}
+            return {
+                "full_name": user.full_name or "",
+                "phone_number": user.phone_number or "",
+                "address": user.address or ""
+            }
+        except SQLAlchemyError as e:
+            print(f"Error retrieving user info: {e}")
+            return {}
+
+
+async def submit_all_orders(user_id: str) -> bool:
+    async with async_session() as session:
+        try:
+            stmt = update(Order).where(Order.user_id == user_id, Order.status == "В корзине").values(status="В обработке")
+            await session.execute(stmt)
+            await session.commit()
+            return True
+        except SQLAlchemyError as e:
+            print(f"Error submitting orders: {e}")
+            await session.rollback()
+            return False
