@@ -107,6 +107,13 @@ class ProductPhoto(Base):
     product_id: Mapped[int] = mapped_column(ForeignKey('products.id', ondelete='CASCADE'), nullable=False)
     product: Mapped["Product"] = relationship("Product", back_populates="photos")
 
+class OrderGroup(Base):
+    __tablename__ = 'order_groups'
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    processed_by_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    order_ids: Mapped[List[int]] = mapped_column(JSON, nullable=False)
+
 async def async_main():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

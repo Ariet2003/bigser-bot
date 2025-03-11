@@ -2,7 +2,7 @@ from typing import Optional, List, Dict
 from sqlalchemy.orm import selectinload
 from sqlalchemy import or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.database.models import async_session, BroadcastHistory, ProductPhoto
+from app.database.models import async_session, BroadcastHistory, ProductPhoto, OrderGroup
 from app.database.models import Color, Category, User, Product, Subcategory, Size, Order, OrderItem
 from app.users.user import userKeyboards as kb
 from sqlalchemy.exc import SQLAlchemyError
@@ -1004,8 +1004,26 @@ async def get_user_info_by_id(telegram_id: str) -> dict:
 async def submit_all_orders(user_id: str) -> bool:
     async with async_session() as session:
         try:
-            stmt = update(Order).where(Order.user_id == user_id, Order.status == "В корзине").values(status="В обработке")
-            await session.execute(stmt)
+            # Выбираем id заказов, находящихся в корзине
+            stmt_select = select(Order.id).where(Order.user_id == user_id, Order.status == "В корзине")
+            result = await session.execute(stmt_select)
+            order_ids = result.scalars().all()
+
+            if not order_ids:
+                return False
+
+            # Обновляем статус заказов на "В обработке"
+            stmt_update = update(Order).where(Order.id.in_(order_ids)).values(status="В обработке")
+            await session.execute(stmt_update)
+
+            # Создаём запись группы заказов
+            new_group = OrderGroup(
+                user_id=user_id,
+                processed_by_id=None,  # Менеджер ещё не назначен
+                order_ids=order_ids
+            )
+            session.add(new_group)
+
             await session.commit()
             return True
         except SQLAlchemyError as e:
