@@ -27,3 +27,17 @@ class UserData(StatesGroup):
     waiting_fullname = State()
     waiting_phone = State()
     waiting_address = State()
+
+class OrderInfo(StatesGroup):
+    waiting_fullname = State()
+    waiting_phone = State()
+    waiting_address = State()
+
+class UserData(StatesGroup):
+    waiting_fullname = State()
+    waiting_phone = State()
+    waiting_address = State()
+
+# Состояние для отправки сообщения менеджеру
+class OrderContact(StatesGroup):
+    waiting_message = State()

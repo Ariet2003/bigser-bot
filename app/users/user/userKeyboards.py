@@ -239,3 +239,32 @@ def get_order_success_final_keyboard():
         [InlineKeyboardButton(text="В личный кабинет", callback_data="go_to_user_dashboard")]
     ])
     return keyboard
+
+# Клавиатура для списка заказов (две строки кнопок с номерами)
+def get_my_orders_keyboard(order_groups: list) -> InlineKeyboardMarkup:
+    buttons = []
+    for idx, group in enumerate(order_groups, start=1):
+        buttons.append(InlineKeyboardButton(text=str(idx), callback_data=f"order_detail:{group.id}"))
+    row1 = buttons[:5]
+    row2 = buttons[5:10]
+    keyboard_buttons = []
+    if row1:
+        keyboard_buttons.append(row1)
+    if row2:
+        keyboard_buttons.append(row2)
+    keyboard_buttons.append([InlineKeyboardButton(text="Назад", callback_data="go_to_user_dashboard")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+
+def get_order_detail_keyboard(order_group_id: int) -> InlineKeyboardMarkup:
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Связаться менеджером", callback_data=f"order_contact:{order_group_id}")],
+        [InlineKeyboardButton(text="Назад", callback_data="user_my_orders")]
+    ])
+    return keyboard
+
+def get_open_chat_keyboard(url: str) -> InlineKeyboardMarkup:
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Открыть личку", url=url)],
+        [InlineKeyboardButton(text="Назад", callback_data="user_my_orders")]
+    ])
+    return keyboard

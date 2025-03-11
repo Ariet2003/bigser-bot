@@ -476,7 +476,7 @@ async def get_manager_by_id(manager_id: int) -> dict:
             result = await session.execute(select(User).where(User.id == manager_id))
             manager = result.scalars().first()
             if manager:
-                return {"id": manager.id, "name": manager.full_name or "Manager"}
+                return {"id": manager.id, "full_name": manager.full_name, "role": manager.role}
             return None
         except Exception as e:
             print(f"Ошибка при получении менеджера {manager_id}: {e}")
@@ -1030,3 +1030,29 @@ async def submit_all_orders(user_id: str) -> bool:
             print(f"Error submitting orders: {e}")
             await session.rollback()
             return False
+
+async def get_order_by_id(order_id: int) -> Optional[Order]:
+    async with async_session() as session:
+        result = await session.execute(
+            select(Order)
+            .options(selectinload(Order.order_items))
+            .where(Order.id == order_id)
+        )
+        return result.scalar_one_or_none()
+
+async def get_order_group_by_id(order_group_id: int) -> Optional[OrderGroup]:
+    async with async_session() as session:
+        return await session.get(OrderGroup, order_group_id)
+
+async def get_user_order_groups(user_id: str) -> List[OrderGroup]:
+    async with async_session() as session:
+        result = await session.scalars(
+            select(OrderGroup).where(OrderGroup.user_id == user_id).order_by(OrderGroup.id.desc()).limit(10)
+        )
+        return result.all()
+
+async def get_user_by_id_user(user_id: int) -> Optional[User]:
+    async with async_session() as session:
+        return await session.get(User, user_id)
+
+

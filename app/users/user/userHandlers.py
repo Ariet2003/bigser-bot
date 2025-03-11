@@ -1,5 +1,7 @@
 import json
 import re
+import urllib
+
 import pytz
 from datetime import datetime
 from aiogram.types import Message, CallbackQuery, InputMediaPhoto
@@ -1110,3 +1112,159 @@ async def go_to_user_cart(callback_query: CallbackQuery, state: FSMContext):
     # Возвращаем пользователя в режим просмотра корзины
     await cart_main(callback_query, state)
 
+
+# Обработчик кнопки "Мои заказы"
+@router.callback_query(F.data == 'user_my_orders')
+async def user_my_orders(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    user_id = str(callback_query.from_user.id)
+    # Получаем последние 10 групп заказов пользователя
+    order_groups = await rq.get_user_order_groups(user_id)
+    if not order_groups:
+        text = "У вас еще нет оформленных заказов."
+    else:
+        lines = []
+        # Для каждой группы берём первый заказ для отображения даты и статуса
+        for idx, group in enumerate(order_groups, start=1):
+            if group.order_ids:
+                order = await rq.get_order_by_id(group.order_ids[0])
+                if order:
+                    order_date = order.order_datetime.strftime("%Y.%m.%d")
+                    status = order.status
+                    lines.append(f"Заказ {idx} : {order_date} : {status}")
+        orders_info = "\n".join(lines)
+        text = f"{orders_info}\n\nМожете посмотреть детально, выберете номер заказа."
+    keyboard = kb.get_my_orders_keyboard(order_groups)
+    await callback_query.message.edit_media(
+        media=InputMediaPhoto(media=utils.user_second_png, caption=text),
+        reply_markup=keyboard
+    )
+
+# Обработчик выбора конкретного заказа из списка (callback_data вида "order_detail:<group_id>")
+@router.callback_query(F.data.startswith("order_detail:"))
+async def order_detail(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    data = callback_query.data
+    order_group_id = int(data.split(":")[1])
+    group = await rq.get_order_group_by_id(order_group_id)
+    if not group:
+        await safe_edit_message(callback_query.message, "Группа заказа не найдена.", reply_markup=None)
+        return
+
+    # Собираем информацию по товарам заказа и считаем сумму
+    items_lines = []
+    total_cost = 0.0
+    index = 1
+    first_order = None
+    for order_id in group.order_ids:
+        order = await rq.get_order_by_id(order_id)
+        if not order:
+            continue
+        if first_order is None:
+            first_order = order
+        for item in order.order_items:
+            product = await rq.get_product(item.product_id)
+            color_name = await rq.catalog_get_color_name(item.chosen_color) if item.chosen_color is not None else "N/A"
+            size_name = await rq.catalog_get_size_name(item.chosen_size) if item.chosen_size is not None else "N/A"
+            items_lines.append(f"{index}. {product.name} ({color_name}, {size_name}) - {item.quantity}шт.")
+            total_cost += item.quantity * float(product.price)
+            index += 1
+    items_text = "\n".join(items_lines)
+
+    # Получаем данные пользователя из первого заказа
+    user_info = await rq.get_user_info_by_id(str(first_order.user_id))
+    fullname = user_info.get("full_name", "N/A")
+    phone = user_info.get("phone_number", "N/A")
+    address = user_info.get("address", "N/A")
+
+    # Формируем блок информации о заказе согласно требованиям
+    details_lines = [items_text, ""]
+    if first_order.delivery_method == "доставка":
+        details_lines.append(f"адрес: {address}")
+    details_lines.append(f"номер: {phone}")
+    details_lines.append(f"фИО: {fullname}")
+    details_lines.append("")
+    details_lines.append(f"тип заказа: {first_order.delivery_method}")
+    details_lines.append(f"статус: {first_order.status}")
+    details_lines.append(f"Сумма заказа: {total_cost:.2f}")
+    details_text = "\n".join(details_lines)
+
+    keyboard = kb.get_order_detail_keyboard(group.id)
+    await safe_edit_message(callback_query.message, details_text, reply_markup=keyboard)
+
+# Обработчик нажатия кнопки "Связаться менеджером"
+@router.callback_query(F.data.startswith("order_contact:"))
+async def order_contact(callback_query: CallbackQuery, state: FSMContext):
+    data = callback_query.data
+    order_group_id = int(data.split(":")[1])
+    group = await rq.get_order_group_by_id(order_group_id)
+    if not group or not group.order_ids:
+        await callback_query.answer("Заказ не найден.", show_alert=True)
+        return
+    first_order = await rq.get_order_by_id(group.order_ids[0])
+    if not first_order or not first_order.processed_by_id:
+        await callback_query.answer("Заказ все еще в обработке.", show_alert=True)
+        return
+
+    # Получаем данные менеджера (из таблицы User) по processed_by_id
+    manager = await rq.get_user_by_id_user(first_order.processed_by_id)
+    if not manager or not manager.telegram_id:
+        await callback_query.answer("Менеджер не найден.", show_alert=True)
+        return
+
+    # Формируем детали заказа (список товаров, адрес, номер, ФИО, тип, статус, сумма)
+    items_lines = []
+    total_cost = 0.0
+    index = 1
+    for order_id in group.order_ids:
+        order = await rq.get_order_by_id(order_id)
+        if not order:
+            continue
+        for item in order.order_items:
+            product = await rq.get_product(item.product_id)
+            color_name = await rq.catalog_get_color_name(item.chosen_color) if item.chosen_color is not None else "N/A"
+            size_name = await rq.catalog_get_size_name(item.chosen_size) if item.chosen_size is not None else "N/A"
+            items_lines.append(f"{index}. {product.name} ({color_name}, {size_name}) - {item.quantity}шт.")
+            total_cost += item.quantity * float(product.price)
+            index += 1
+    items_text = "\n".join(items_lines)
+
+    user_info = await rq.get_user_info_by_id(str(first_order.user_id))
+    fullname = user_info.get("full_name", "N/A")
+    phone = user_info.get("phone_number", "N/A")
+    address = user_info.get("address", "N/A")
+
+    details_lines = [items_text, ""]
+    if first_order.delivery_method == "доставка":
+        details_lines.append(f"адрес: {address}")
+    details_lines.append(f"номер: {phone}")
+    details_lines.append(f"фИО: {fullname}")
+    details_lines.append("")
+    details_lines.append(f"тип заказа: {first_order.delivery_method}")
+    details_lines.append(f"статус: {first_order.status}")
+    details_lines.append(f"Сумма заказа: {total_cost:.2f}")
+    order_details = "\n".join(details_lines)
+
+    # URL-кодируем сформированный текст
+    prefilled_text = urllib.parse.quote(order_details)
+
+    # Формируем URL для открытия личного чата с менеджером с предзаполненным текстом.
+    # Если у менеджера есть username (например, "@manager123"), используем схему tg://resolve
+    # Если username отсутствует и telegram_id является числовым, пробуем использовать tg://user?id=...
+    try:
+        int(manager.full_name)
+        # Если telegram_id число, используем схему tg://user?id=
+        url = f"tg://user?id={manager.full_name}&text={prefilled_text}"
+    except ValueError:
+        # Если не число, предполагаем, что это username (возможно с @)
+        username = manager.full_name[1:] if manager.full_name.startswith("@") else manager.full_name
+        print(username)
+        url = f"tg://resolve?domain={username}&text={prefilled_text}"
+
+    # Создаем клавиатуру с кнопкой для открытия чата
+    keyboard = kb.get_open_chat_keyboard(url)
+    await safe_edit_message(
+        callback_query.message,
+        "Нажмите кнопку ниже, чтобы открыть личный чат с менеджером. Отредактируйте сообщение по необходимости и отправьте его.",
+        reply_markup=keyboard
+    )

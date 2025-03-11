@@ -77,7 +77,7 @@ def create_manager_list_keyboard(managers: list, page: int, has_prev: bool, has_
     for manager in managers:
         button = InlineKeyboardButton(
             text=f"{manager['full_name']}",
-            callback_data=f"admin_detail:{manager['id']}"
+            callback_data=f"manager_detail:{manager['id']}"
         )
         markup.inline_keyboard.append([button])
     # Добавляем строку пагинации
@@ -101,9 +101,9 @@ def manager_pagination_keyboard(page: int, has_prev: bool, has_next: bool) -> In
 
 def manager_detail_keyboard(manager_id: int) -> InlineKeyboardMarkup:
     markup = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Изменить ФИО", callback_data=f"edit_admin_fullname:{manager_id}")],
-        [InlineKeyboardButton(text="Изменить роль", callback_data=f"edit_admin_role:{manager_id}")],
-        [InlineKeyboardButton(text="⬅️ Назад", callback_data="edit_admin")]
+        [InlineKeyboardButton(text="Изменить username", callback_data=f"edit_manager_fullname:{manager_id}")],
+        [InlineKeyboardButton(text="Изменить роль", callback_data=f"edit_manager_role:{manager_id}")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="edit_manager")]
     ])
     return markup
 

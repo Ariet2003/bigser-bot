@@ -201,7 +201,7 @@ async def add_manager_second(message: Message, state: FSMContext):
     new_manager_telegram_id = message.text
     await state.update_data(new_manager_telegram_id=new_manager_telegram_id)
     sent_message = await message.answer(
-        text="Напишите ФИО пользователя",
+        text="Напишите username (telegram) пользователя",
         reply_markup=kb.go_to_dashboard
     )
 
@@ -401,7 +401,7 @@ async def handle_manager_detail(callback_query: CallbackQuery, state: FSMContext
     if not manager:
         await callback_query.answer("Менеджер не найден.")
         return
-    text = f"Детали менеджера:\nID: {manager['id']}\nФИО: {manager['full_name']}\nРоль: {manager['role']}"
+    text = f"Детали менеджера:\nID: {manager['id']}\nUsername(telegram): {manager['full_name']}\nРоль: {manager['role']}"
     markup = kb.manager_detail_keyboard(manager_id)
 
     # Если сообщение содержит фотографию, изменяем подпись, иначе — текст.
@@ -420,7 +420,7 @@ async def edit_manager_fullname(callback_query: CallbackQuery, state: FSMContext
 
     manager_id = int(callback_query.data.split(":")[1])
     await state.update_data(manager_id=manager_id)
-    sent_message = await callback_query.message.answer("Введите новое ФИО для менеджера:")
+    sent_message = await callback_query.message.answer("Введите новый username (telegram) для менеджера:")
     await state.set_state(st.ManagerEdit.waiting_for_fullname)
 
     user_data['bot_messages'].append(sent_message.message_id)
@@ -437,10 +437,10 @@ async def process_manager_fullname(message: Message, state: FSMContext):
     new_fullname = message.text
     success = await rq.update_manager_fullname(manager_id, new_fullname)
     if success:
-        sent_message = await message.answer("ФИО успешно изменено.", reply_markup=kb.go_to_dashboard)
+        sent_message = await message.answer("Username успешно изменено.", reply_markup=kb.go_to_dashboard)
         user_data['bot_messages'].append(sent_message.message_id)
     else:
-        sent_message = await message.answer("Ошибка при изменении ФИО.", reply_markup=kb.go_to_dashboard)
+        sent_message = await message.answer("Ошибка при изменении username.", reply_markup=kb.go_to_dashboard)
         user_data['bot_messages'].append(sent_message.message_id)
 
     await state.clear()
