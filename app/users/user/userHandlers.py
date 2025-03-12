@@ -1252,13 +1252,12 @@ async def order_contact(callback_query: CallbackQuery, state: FSMContext):
     # Если у менеджера есть username (например, "@manager123"), используем схему tg://resolve
     # Если username отсутствует и telegram_id является числовым, пробуем использовать tg://user?id=...
     try:
-        int(manager.full_name)
+        int(manager.address)
         # Если telegram_id число, используем схему tg://user?id=
-        url = f"tg://user?id={manager.full_name}&text={prefilled_text}"
+        url = f"tg://user?id={manager.address}&text={prefilled_text}"
     except ValueError:
         # Если не число, предполагаем, что это username (возможно с @)
-        username = manager.full_name[1:] if manager.full_name.startswith("@") else manager.full_name
-        print(username)
+        username = manager.address[1:] if manager.address.startswith("@") else manager.address
         url = f"tg://resolve?domain={username}&text={prefilled_text}"
 
     # Создаем клавиатуру с кнопкой для открытия чата

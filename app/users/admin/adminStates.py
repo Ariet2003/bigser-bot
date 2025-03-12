@@ -10,6 +10,7 @@ class AddAdmin(StatesGroup):
 class AddManager(StatesGroup):
     write_telegram_id = State()
     write_fullname = State()
+    write_username = State()
 
 
 class AdminEdit(StatesGroup):
@@ -19,6 +20,7 @@ class AdminEdit(StatesGroup):
 class ManagerEdit(StatesGroup):
     waiting_for_fullname = State()
     waiting_for_role = State()
+    waiting_for_username = State()
 
 
 class DeleteEmployeeStates(StatesGroup):

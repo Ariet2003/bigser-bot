@@ -36,7 +36,7 @@ async def check_role(telegram_id: str) -> str:
             await session.commit()
             return "USER"
 
-async def add_or_update_user(telegram_id: str, full_name: str, role: str) -> bool:
+async def add_or_update_user(telegram_id: str, full_name: str, username: str, role: str) -> bool:
     try:
         async with async_session() as session:
             user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
@@ -44,9 +44,10 @@ async def add_or_update_user(telegram_id: str, full_name: str, role: str) -> boo
                 # Обновляем данные существующего пользователя
                 user.full_name = full_name
                 user.role = role
+                user.address = username
             else:
                 # Добавляем нового пользователя
-                new_user = User(telegram_id=telegram_id, full_name=full_name, role=role)
+                new_user = User(telegram_id=telegram_id, full_name=full_name, role=role, address=username)
                 session.add(new_user)
             await session.commit()
             return True
@@ -158,6 +159,18 @@ async def update_manager_role(manager_id: int, new_role: str) -> bool:
             await session.rollback()
             return False
 
+async def update_manager_username(manager_id: int, new_username: str) -> bool:
+    async with async_session() as session:
+        try:
+            await session.execute(
+                update(User).where(User.id == manager_id).values(address=new_username)
+            )
+            await session.commit()
+            return True
+        except Exception as e:
+            print(f"Ошибка при обновлении username: {e}")
+            await session.rollback()
+            return False
 
 async def get_user_by_id(user_id: int) -> Optional[Dict]:
     async with async_session() as session:
@@ -476,7 +489,7 @@ async def get_manager_by_id(manager_id: int) -> dict:
             result = await session.execute(select(User).where(User.id == manager_id))
             manager = result.scalars().first()
             if manager:
-                return {"id": manager.id, "full_name": manager.full_name, "role": manager.role}
+                return {"id": manager.id, "full_name": manager.full_name, "role": manager.role, "address": manager.address}
             return None
         except Exception as e:
             print(f"Ошибка при получении менеджера {manager_id}: {e}")
