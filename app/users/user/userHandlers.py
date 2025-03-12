@@ -4,6 +4,8 @@ import urllib
 
 import pytz
 from datetime import datetime
+
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message, CallbackQuery, InputMediaPhoto
 from aiogram.filters import CommandStart, Command
 from aiogram import F, Router
@@ -1267,3 +1269,44 @@ async def order_contact(callback_query: CallbackQuery, state: FSMContext):
         "Нажмите кнопку ниже, чтобы открыть личный чат с менеджером. Отредактируйте сообщение по необходимости и отправьте его.",
         reply_markup=keyboard
     )
+
+
+@router.callback_query(F.data == 'user_support')
+async def user_support(callback_query: CallbackQuery, state: FSMContext):
+    """
+    Обработчик кнопки "📞 Поддержка".
+    Получает данные менеджера поддержки из БД и формирует ссылки:
+      - для Telegram: tg://user?id=<telegram_id>
+      - для WhatsApp: https://wa.me/<phone_number> (без символа "+")
+    Затем выводит сообщение с фото, текстом и клавиатурой.
+    """
+    support_details = await rq.get_support_manager_details()
+
+    if support_details:
+        telegram_id = support_details.get("telegram_id")
+        phone_number = support_details.get("phone_number")
+
+        # Формируем URL для Telegram, используя telegram_id
+        telegram_url = f"tg://user?id={telegram_id}"
+        # Формируем URL для WhatsApp, убираем лишние символы из номера
+        clean_number = phone_number.replace("+", "").replace(" ", "").replace("-", "")
+        whatsapp_url = f"https://wa.me/{clean_number}"
+
+        # Получаем фото из utils (например, utils.user_second_png)
+        user_png = utils.user_second_png
+        # Формируем клавиатуру, передавая сформированные URL
+        markup = kb.get_support_keyboard(telegram_url, whatsapp_url)
+        text = "Свяжитесь с нашим специалистом поддержки:"
+
+        try:
+            if callback_query.message.photo:
+                await callback_query.message.edit_caption(caption=text, reply_markup=markup)
+            else:
+                await callback_query.message.edit_text(text=text, reply_markup=markup)
+        except TelegramBadRequest as e:
+            if "message to edit not found" in str(e):
+                await callback_query.message.answer("Сообщение для редактирования не найдено. Возможно, оно было удалено.")
+            else:
+                await callback_query.message.answer(f"Произошла ошибка: {e}")
+    else:
+        await callback_query.message.answer("Специалист поддержки временно недоступен.")

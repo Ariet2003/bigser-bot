@@ -1,6 +1,8 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from urllib.parse import quote
+from app.database import requests as rq
+
 
 from app import utils
 
@@ -17,12 +19,6 @@ manage_employees_button = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="⬅️ В личный кабинет", callback_data='go_to_dashboard')]
 ])
 
-add_employee = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="➕ Администратор", callback_data='add_admin')],
-    [InlineKeyboardButton(text="➕ Менеджер", callback_data='add_manager')],
-    [InlineKeyboardButton(text="⬅️ В личный кабинет", callback_data='go_to_dashboard')]
-])
-
 go_to_dashboard = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="⬅️ В личный кабинет", callback_data='go_to_dashboard')]
 ])
@@ -30,6 +26,7 @@ go_to_dashboard = InlineKeyboardMarkup(inline_keyboard=[
 edit_employee = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="✏️ Администратор", callback_data='edit_admin')],
     [InlineKeyboardButton(text="✏️ Менеджер", callback_data='edit_manager')],
+    [InlineKeyboardButton(text="✏ Менеджер поддержки", callback_data='edit_support')],
     [InlineKeyboardButton(text="⬅️ В личный кабинет", callback_data='go_to_dashboard')]
 ])
 
@@ -487,3 +484,51 @@ close_broadcast_message = InlineKeyboardMarkup(inline_keyboard=[
 go_to_notification = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="⬅️ Назад", callback_data="send_notifications")]
 ])
+
+def create_edit_support_list_keyboard(support_list: list, page: int, has_prev: bool, has_next: bool) -> InlineKeyboardMarkup:
+    markup = InlineKeyboardMarkup(inline_keyboard=[])
+    for support in support_list:
+        button = InlineKeyboardButton(
+            text=f"{support['full_name']}",
+            callback_data=f"edit_support_detail:{support['id']}"
+        )
+        markup.inline_keyboard.append([button])
+    pagination_buttons = []
+    if has_prev:
+        pagination_buttons.append(InlineKeyboardButton(text="⬅️ Предыдущая", callback_data=f"edit_support_page:{page-1}"))
+    if has_next:
+        pagination_buttons.append(InlineKeyboardButton(text="Следующая ➡️", callback_data=f"edit_support_page:{page+1}"))
+    if pagination_buttons:
+        markup.inline_keyboard.append(pagination_buttons)
+    return markup
+
+def support_detail_keyboard(support_id: int) -> InlineKeyboardMarkup:
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Изменить ФИО", callback_data=f"edit_support_fullname:{support_id}")],
+        [InlineKeyboardButton(text="Изменить телефон", callback_data=f"edit_support_phone:{support_id}")],
+        [InlineKeyboardButton(text="Изменить Telegram ID", callback_data=f"edit_support_telegram:{support_id}")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="manage_employees")]
+    ])
+    return markup
+
+# Скрываем кнопку если есть поддержка
+async def get_add_employee_keyboard():
+    """
+    Возвращает клавиатуру для добавления сотрудников, скрывая кнопку "Менеджер поддержки",
+    если менеджер поддержки уже существует.
+    """
+    support_exists = await rq.check_support_exists()  # Предполагается, что у вас есть такая функция в Requests.py
+    if support_exists:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Администратор", callback_data='add_admin')],
+            [InlineKeyboardButton(text="➕ Менеджер", callback_data='add_manager')],
+            [InlineKeyboardButton(text="⬅️ В личный кабинет", callback_data='go_to_dashboard')]
+        ])
+    else:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Администратор", callback_data='add_admin')],
+            [InlineKeyboardButton(text="➕ Менеджер", callback_data='add_manager')],
+            [InlineKeyboardButton(text="➕ Менеджер поддержки", callback_data='add_support')],
+            [InlineKeyboardButton(text="⬅️ В личный кабинет", callback_data='go_to_dashboard')]
+        ])
+    return keyboard

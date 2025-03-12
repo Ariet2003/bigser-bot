@@ -82,7 +82,8 @@ async def get_admin_by_id(admin_id: int) -> Optional[Dict]:
         query = select(User).where(User.id == admin_id)
         admin = await session.scalar(query)
         if admin:
-            return {"id": admin.id, "full_name": admin.full_name, "role": admin.role}
+            return {"id": admin.id, "full_name": admin.full_name, "role": admin.role, "telegram_id": admin.telegram_id,
+                    "phone_number": admin.phone_number}
         return None
 
 async def update_admin_fullname(admin_id: int, new_fullname: str) -> bool:
@@ -1069,3 +1070,75 @@ async def get_user_by_id_user(user_id: int) -> Optional[User]:
         return await session.get(User, user_id)
 
 
+
+async def get_support_manager_details() -> Optional[Dict]:
+    """
+    Получает из базы первого сотрудника с ролью SUPPORT.
+    Возвращает словарь с ключами 'telegram_id' и 'phone_number', или None, если такого нет.
+    """
+    async with async_session() as session:
+        result = await session.execute(
+            select(User.telegram_id, User.phone_number).where(User.role == "SUPPORT")
+        )
+        support = result.first()
+        if support:
+            return {"telegram_id": support[0], "phone_number": support[1]}
+        return None
+
+
+async def check_support_exists():
+    async with async_session() as session:
+        result = await session.execute(select(User).where(User.role == "SUPPORT"))
+        support_user = result.scalars().first()
+        return support_user is not None
+
+async def update_support_details_field(user_id: int, field: str, value: str) -> bool:
+    allowed_fields = {"full_name", "phone_number", "role", "telegram_id"}
+    if field not in allowed_fields:
+        print(f"Неверное поле для обновления: {field}")
+        return False
+
+    # Если поле не telegram_id — стандартное обновление
+    if field != "telegram_id":
+        async with async_session() as session:
+            try:
+                await session.execute(
+                    update(User).where(User.id == user_id).values({field: value})
+                )
+                await session.commit()
+                return True
+            except Exception as e:
+                print(f"Ошибка при обновлении {field} для поддержки {user_id}: {e}")
+                await session.rollback()
+                return False
+
+    # Если обновляем поле telegram_id, то нужна особая логика
+    async with async_session() as session:
+        try:
+            # Ищем пользователя с указанным telegram_id
+            result = await session.execute(
+                select(User).where(User.telegram_id == value)
+            )
+            existing_user = result.scalar_one_or_none()
+
+            if existing_user:
+                # Если найден пользователь с таким telegram_id, меняем его роль на SUPPORT
+                await session.execute(
+                    update(User).where(User.id == existing_user.id).values(role="SUPPORT")
+                )
+                # Если текущий пользователь (user_id) не совпадает с найденным, удаляем текущую запись
+                if user_id != existing_user.id:
+                    await session.execute(
+                        delete(User).where(User.id == user_id)
+                    )
+            else:
+                # Если такого пользователя нет, просто обновляем telegram_id текущего SUPPORT
+                await session.execute(
+                    update(User).where(User.id == user_id).values(telegram_id=value)
+                )
+            await session.commit()
+            return True
+        except Exception as e:
+            print(f"Ошибка при обновлении telegram_id для поддержки {user_id}: {e}")
+            await session.rollback()
+            return False

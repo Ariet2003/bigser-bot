@@ -268,3 +268,17 @@ def get_open_chat_keyboard(url: str) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="Назад", callback_data="user_my_orders")]
     ])
     return keyboard
+
+def get_support_keyboard(telegram_url: str, whatsapp_url: str) -> InlineKeyboardMarkup:
+    """
+    Генерирует клавиатуру с кнопками для связи с поддержкой:
+      - Кнопка "📩 Telegram" открывает чат по URL: tg://user?id=<telegram_id>
+      - Кнопка "📞 WhatsApp" открывает чат по URL: https://wa.me/<phone_number>
+      - Кнопка "⬅️ Назад" возвращает в личный кабинет
+    """
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📩 Telegram", url=telegram_url),
+         InlineKeyboardButton(text="📞 WhatsApp", url=whatsapp_url)],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="go_to_user_dashboard")]
+    ])
+    return keyboard

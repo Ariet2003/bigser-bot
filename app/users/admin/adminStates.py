@@ -63,3 +63,20 @@ class BroadcastStates(StatesGroup):
 
 class PhotoIdGen(StatesGroup):
     waiting_for_zip = State()
+
+class AddSupport(StatesGroup):
+    write_telegram_id = State()
+    write_fullname = State()
+    write_phone = State()
+
+class SupportEditFullname(StatesGroup):
+    waiting_for_fullname = State()
+
+class SupportEditPhone(StatesGroup):
+    waiting_for_phone = State()
+
+class SupportEditRole(StatesGroup):
+    waiting_for_role = State()
+
+class SupportEditTelegram(StatesGroup):
+    waiting_for_telegram = State()

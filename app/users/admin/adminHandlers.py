@@ -1,3 +1,4 @@
+import json
 import os
 import re
 from datetime import datetime
@@ -108,7 +109,7 @@ async def add_employee(callback_query: CallbackQuery, state: FSMContext):
 
     sent_message = await callback_query.message.answer_photo(photo=utils.adminka_png,
                                                              caption='Выберите, какого сотрудника вы хотите добавить.',
-                                                             reply_markup=kb.add_employee)
+                                                             reply_markup=await kb.get_add_employee_keyboard())
 
     user_data['bot_messages'].append(sent_message.message_id)
 
@@ -2011,3 +2012,219 @@ async def invalid_file(message: Message, state: FSMContext):
 
 
 
+# ========= Добавление менеджера поддержки =========
+@router.callback_query(F.data == "add_support")
+async def add_support_employee(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    sent_message = await callback_query.message.answer("Введите ФИО для менеджера поддержки:")
+    await state.set_state(st.AddSupport.write_fullname)
+    user_data['bot_messages'].append(sent_message.message_id)
+
+@router.message(st.AddSupport.write_fullname)
+async def process_support_fullname(message: Message, state: FSMContext):
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    await state.update_data(full_name=message.text)
+    sent_message = await message.answer("Введите номер телефона (WhatsApp) для менеджера поддержки (в формате +996*********):")
+    await state.set_state(st.AddSupport.write_phone)
+    user_data['bot_messages'].append(sent_message.message_id)
+
+@router.message(st.AddSupport.write_phone)
+async def process_support_phone(message: Message, state: FSMContext):
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    phone = message.text.strip()
+
+    if not phone.startswith("+996") or not phone[1:].replace(" ", "").isdigit() or len(phone) != 13:
+        sent_message = await message.answer(
+            "❌ Некорректный формат номера телефона.\n"
+            "Пожалуйста, введите номер в формате <b>+996XXXXXXXXX</b> (12 цифр после +996).",
+            parse_mode="HTML"
+        )
+        user_data['bot_messages'].append(sent_message.message_id)
+        return
+
+    await state.update_data(phone=phone)
+    sent_message = await message.answer("✅ Теперь введите <b>telegram_id</b> для менеджера поддержки:", parse_mode="HTML")
+    await state.set_state(st.AddSupport.write_telegram_id)
+    user_data['bot_messages'].append(sent_message.message_id)
+
+@router.message(st.AddSupport.write_telegram_id)
+async def process_support_telegram_id(message: Message, state: FSMContext):
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    telegram_id = message.text
+    if not telegram_id.isdigit():
+        sent_message = await message.answer("Некорректный формат telegram_id. Пожалуйста, введите числовой telegram_id.")
+        user_data['bot_messages'].append(sent_message.message_id)
+        return
+
+    data = await state.get_data()
+    full_name = data.get("full_name")
+    phone = data.get("phone")
+
+    success = await rq.add_or_update_user(telegram_id=telegram_id, full_name=full_name, role="SUPPORT", username="")
+    if success:
+        phone_success = await rq.update_user_phone(telegram_id, phone)
+        if phone_success:
+            sent_message = await message.answer("Менеджер поддержки успешно добавлен.", reply_markup=kb.go_to_dashboard)
+        else:
+            sent_message = await message.answer("Менеджер поддержки добавлен, но произошла ошибка при сохранении номера телефона.", reply_markup=kb.go_to_dashboard)
+    else:
+        sent_message = await message.answer("Ошибка при добавлении менеджера поддержки.", reply_markup=kb.go_to_dashboard)
+    await state.clear()
+    user_data['bot_messages'].append(sent_message.message_id)
+
+@router.callback_query(F.data == "edit_support")
+async def edit_support(callback_query: CallbackQuery, state: FSMContext):
+    page = 1
+    # Получаем список сотрудников поддержки (роль "SUPPORT")
+    support_json = await rq.get_users_by_role(role="SUPPORT")
+    support_list = json.loads(support_json)
+    total = len(support_list)
+    has_prev = page > 1
+    has_next = (page * 10) < total
+    markup = kb.create_edit_support_list_keyboard(support_list, page, has_prev, has_next)
+    text = "Выберите сотрудника поддержки для редактирования:"
+    if callback_query.message.photo:
+        await callback_query.message.edit_caption(caption=text, reply_markup=markup)
+    else:
+        await callback_query.message.edit_text(text=text, reply_markup=markup)
+
+# Обработчик выбора конкретного сотрудника поддержки для редактирования
+@router.callback_query(F.data.startswith("edit_support_detail:"))
+async def support_detail(callback_query: CallbackQuery, state: FSMContext):
+    support_id = int(callback_query.data.split(":")[1])
+    support = await rq.get_admin_by_id(support_id)
+    if not support:
+        await callback_query.answer("Менеджер поддержки не найден.")
+        return
+    text = (f"Детали менеджера поддержки:\nID: {support['id']}\nФИО: {support['full_name']}\nРоль: {support['role']}"
+            f"\nTelegram ID: {support['telegram_id']}\nНомер телефона: {support['phone_number']}")
+    markup = kb.support_detail_keyboard(support_id)
+
+    if callback_query.message.photo:
+        await callback_query.message.edit_caption(caption=text, reply_markup=markup)
+    else:
+        await callback_query.message.edit_text(text=text, reply_markup=markup)
+
+# ========= Редактирование менеджера поддержки =========
+
+# --- Редактирование ФИО ---
+@router.callback_query(F.data.startswith("edit_support_fullname:"))
+async def edit_support_fullname(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    support_id = int(callback_query.data.split(":")[1])
+    await state.update_data(support_id=support_id)
+    sent_message = await callback_query.message.answer("Введите новое ФИО для менеджера поддержки:")
+    await state.set_state(st.SupportEditFullname.waiting_for_fullname)
+    user_data['bot_messages'].append(sent_message.message_id)
+
+@router.message(st.SupportEditFullname.waiting_for_fullname)
+async def process_support_fullname_edit(message: Message, state: FSMContext):
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    data = await state.get_data()
+    support_id = data.get("support_id")
+    new_fullname = message.text
+    success = await rq.update_support_details_field(support_id, field="full_name", value=new_fullname)
+    if success:
+        sent_message = await message.answer("ФИО успешно обновлено.", reply_markup=kb.go_to_dashboard)
+    else:
+        sent_message = await message.answer("Ошибка при обновлении ФИО.", reply_markup=kb.go_to_dashboard)
+    await state.clear()
+    user_data['bot_messages'].append(sent_message.message_id)
+
+# ====== Редактирование номера телефона поддержки ======
+@router.callback_query(F.data.startswith("edit_support_phone:"))
+async def edit_support_phone(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    support_id = int(callback_query.data.split(":")[1])
+    await state.update_data(support_id=support_id)
+    sent_message = await callback_query.message.answer("Введите новый номер телефона для менеджера поддержки:")
+    await state.set_state(st.SupportEditPhone.waiting_for_phone)
+    user_data['bot_messages'].append(sent_message.message_id)
+
+@router.message(st.SupportEditPhone.waiting_for_phone)
+async def process_support_phone_edit(message: Message, state: FSMContext):
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    new_phone = message.text.strip()
+
+    if not new_phone.startswith("+996") or not new_phone[1:].replace(" ", "").isdigit() or len(new_phone) != 13:
+        sent_message = await message.answer(
+            "❌ Некорректный формат номера телефона.\n"
+            "Пожалуйста, введите номер в формате <b>+996XXXXXXXXX</b> (12 цифр после +996).",
+            parse_mode="HTML"
+        )
+        user_data['bot_messages'].append(sent_message.message_id)
+        return
+
+    data = await state.get_data()
+    support_id = data.get("support_id")
+    success = await rq.update_support_details_field(support_id, field="phone_number", value=new_phone)
+    if success:
+        sent_message = await message.answer("Номер телефона успешно обновлен.", reply_markup=kb.go_to_dashboard)
+    else:
+        sent_message = await message.answer("Ошибка при обновлении номера телефона.", reply_markup=kb.go_to_dashboard)
+    await state.clear()
+    user_data['bot_messages'].append(sent_message.message_id)
+
+# ====== Редактирование Telegram ID поддержки ======
+@router.callback_query(F.data.startswith("edit_support_telegram:"))
+async def edit_support_telegram(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    support_id = int(callback_query.data.split(":")[1])
+    await state.update_data(support_id=support_id)
+    sent_message = await callback_query.message.answer("Введите новый Telegram ID для менеджера поддержки:")
+    await state.set_state(st.SupportEditTelegram.waiting_for_telegram)
+    user_data['bot_messages'].append(sent_message.message_id)
+
+@router.message(st.SupportEditTelegram.waiting_for_telegram)
+async def process_support_telegram_edit(message: Message, state: FSMContext):
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    data = await state.get_data()
+    support_id = data.get("support_id")
+    new_telegram = message.text
+    success = await rq.update_support_details_field(support_id, field="telegram_id", value=new_telegram)
+    if success:
+        sent_message = await message.answer("Telegram ID успешно обновлен.", reply_markup=kb.go_to_dashboard)
+    else:
+        sent_message = await message.answer("Ошибка при обновлении Telegram ID.", reply_markup=kb.go_to_dashboard)
+    await state.clear()
+    user_data['bot_messages'].append(sent_message.message_id)
