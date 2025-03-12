@@ -1049,7 +1049,9 @@ async def get_order_by_id(order_id: int) -> Optional[Order]:
     async with async_session() as session:
         result = await session.execute(
             select(Order)
-            .options(selectinload(Order.order_items))
+            .options(
+                selectinload(Order.order_items).selectinload(OrderItem.product)
+            )
             .where(Order.id == order_id)
         )
         return result.scalar_one_or_none()
@@ -1140,5 +1142,99 @@ async def update_support_details_field(user_id: int, field: str, value: str) -> 
             return True
         except Exception as e:
             print(f"Ошибка при обновлении telegram_id для поддержки {user_id}: {e}")
+            await session.rollback()
+            return False
+
+
+
+async def get_new_order_groups(page: int, per_page: int) -> List[OrderGroup]:
+    async with async_session() as session:
+        result = await session.scalars(select(OrderGroup).order_by(OrderGroup.id.asc()))
+        groups = result.all()
+        new_groups = []
+        for group in groups:
+            if group.order_ids:
+                order = await get_order_by_id(group.order_ids[0])
+                if order and order.status == "В обработке":
+                    new_groups.append(group)
+        start = (page - 1) * per_page
+        end = start + per_page
+        return new_groups[start:end]
+
+async def get_total_new_order_groups() -> int:
+    async with async_session() as session:
+        result = await session.scalars(select(OrderGroup))
+        groups = result.all()
+        count = 0
+        for group in groups:
+            if group.order_ids:
+                order = await get_order_by_id(group.order_ids[0])
+                if order and order.status == "В обработке":
+                    count += 1
+        return count
+
+
+async def update_order_status(order_ids: List[int], new_status: str) -> bool:
+    async with async_session() as session:
+        try:
+            # Обновляем статус заказов
+            stmt = update(Order).where(Order.id.in_(order_ids)).values(status=new_status)
+            await session.execute(stmt)
+
+            if new_status == "Удален":
+                # Получаем все записи OrderGroup
+                result = await session.execute(select(OrderGroup))
+                groups = result.scalars().all()
+                for group in groups:
+                    # Если среди order_ids группы есть заказы, которые изменены на "Удален",
+                    # удаляем их из списка
+                    updated_ids = [oid for oid in group.order_ids if oid not in order_ids]
+                    if updated_ids != group.order_ids:
+                        group.order_ids = updated_ids
+            await session.commit()
+            return True
+        except SQLAlchemyError as e:
+            print(f"Error updating order status: {e}")
+            await session.rollback()
+            return False
+
+
+async def delete_product_from_order_group(order_item_id: int) -> bool:
+    async with async_session() as session:
+        try:
+            # Получаем OrderItem
+            order_item = await session.get(OrderItem, order_item_id)
+            if not order_item:
+                return False
+
+            # Получаем заказ (Order) для OrderItem
+            order = await session.get(Order, order_item.order_id)
+            if not order:
+                return False
+
+            # Удаляем OrderItem
+            await session.delete(order_item)
+            await session.flush()
+
+            # Проверяем, остались ли товары в заказе
+            remaining = await session.scalar(
+                select(func.count(OrderItem.id)).where(OrderItem.order_id == order.id)
+            )
+            if remaining == 0:
+                # Находим OrderGroup, в котором содержится этот заказ (предполагаем, что order_ids – список id заказов)
+                result = await session.execute(
+                    select(OrderGroup).where(OrderGroup.order_ids.contains([order.id]))
+                )
+                order_group = result.scalar_one_or_none()
+                if order_group:
+                    new_order_ids = [oid for oid in order_group.order_ids if oid != order.id]
+                    order_group.order_ids = new_order_ids
+                    # Обновляем статус заказа на "Удален"
+                    stmt = update(Order).where(Order.id == order.id).values(status="Удален")
+                    await session.execute(stmt)
+            await session.commit()
+            return True
+        except SQLAlchemyError as e:
+            print(f"Error deleting product from order group: {e}")
             await session.rollback()
             return False
