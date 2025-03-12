@@ -191,11 +191,19 @@ async def manager_cancel_order_confirm(callback_query: CallbackQuery, state: FSM
     if not group:
         await callback_query.answer("Группа заказа не найдена.", show_alert=True)
         return
-    success = await rq.update_order_status(group.order_ids, "Отменен")
+
+    # Получаем менеджера по telegram_id
+    manager = await rq.get_user_by_telegram_id(str(callback_query.from_user.id))
+    if not manager:
+        await callback_query.answer("Менеджер не найден.", show_alert=True)
+        return
+
+    success = await rq.update_order_status(group.order_ids, "Отменен", manager_id=manager.id)
     if success:
         await safe_edit_message(callback_query.message, "Заказ отменен.", reply_markup=kb.get_manager_main_keyboard())
     else:
         await callback_query.answer("Ошибка при отмене заказа.", show_alert=True)
+
 
 # Обработчик кнопки "Принять"
 @router.callback_query(F.data.startswith("manager_accept_order:"))
@@ -214,7 +222,14 @@ async def manager_accept_order_confirm(callback_query: CallbackQuery, state: FSM
     if not group:
         await callback_query.answer("Группа заказа не найдена.", show_alert=True)
         return
-    success = await rq.update_order_status(group.order_ids, "Выполнено")
+
+    # Получаем менеджера по telegram_id
+    manager = await rq.get_user_by_telegram_id(str(callback_query.from_user.id))
+    if not manager:
+        await callback_query.answer("Менеджер не найден.", show_alert=True)
+        return
+
+    success = await rq.update_order_status(group.order_ids, "Выполнено", manager_id=manager.id)
     if success:
         await safe_edit_message(
             callback_query.message,
@@ -224,6 +239,7 @@ async def manager_accept_order_confirm(callback_query: CallbackQuery, state: FSM
         )
     else:
         await callback_query.answer("Ошибка при принятии заказа.", show_alert=True)
+
 
 
 # Обработчик кнопки "Редактировать заказ" – вывод списка товаров заказа
@@ -432,3 +448,26 @@ async def manager_delete_product_confirm(callback_query: CallbackQuery, state: F
 @router.callback_query(F.data == 'go_to_manager_dashboard')
 async def go_to_dashboard(callback_query: CallbackQuery, state: FSMContext):
     await manager_account(callback_query.message, state)
+
+
+@router.callback_query(F.data == 'manager_stats')
+async def manager_stats(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    # Получаем информацию о менеджере по telegram_id
+    manager_info = await rq.get_manager_info(str(callback_query.from_user.id))
+    manager_name = manager_info.full_name if manager_info and manager_info.full_name else "N/A"
+
+    # Получаем статистику по заказам (данные из OrderGroup)
+    accepted_orders = await rq.get_accepted_order_groups()
+    cancelled_orders = await rq.get_cancelled_order_groups()
+
+    stats_text = (
+        f"СТАТИСТИКА\n"
+        f"ФИО: {manager_name}\n\n"
+        f"Заказы({accepted_orders + cancelled_orders}):\n"
+        f"    Принятые: {accepted_orders}\n"
+        f"    Отмененные: {cancelled_orders}"
+    )
+    keyboard = kb.go_to_manager_dashboard()
+    await safe_edit_message(callback_query.message, stats_text, reply_markup=keyboard, media=utils.manager_png)
+

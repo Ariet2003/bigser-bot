@@ -1174,11 +1174,17 @@ async def get_total_new_order_groups() -> int:
         return count
 
 
-async def update_order_status(order_ids: List[int], new_status: str) -> bool:
+async def get_user_by_telegram_id(telegram_id: str) -> Optional[User]:
+    async with async_session() as session:
+        result = await session.execute(select(User).where(User.telegram_id == telegram_id))
+        user = result.scalar_one_or_none()
+        return user
+
+async def update_order_status(order_ids: List[int], new_status: str, manager_id: Optional[int] = None) -> bool:
     async with async_session() as session:
         try:
-            # Обновляем статус заказов
-            stmt = update(Order).where(Order.id.in_(order_ids)).values(status=new_status)
+            # Обновляем статус заказов и записываем id менеджера в processed_by_id
+            stmt = update(Order).where(Order.id.in_(order_ids)).values(status=new_status, processed_by_id=manager_id)
             await session.execute(stmt)
 
             if new_status == "Удален":
@@ -1238,3 +1244,36 @@ async def delete_product_from_order_group(order_item_id: int) -> bool:
             print(f"Error deleting product from order group: {e}")
             await session.rollback()
             return False
+
+
+async def get_manager_info(telegram_id: str) -> Optional[User]:
+    async with async_session() as session:
+        result = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+        return result
+
+
+# Функция для получения количества принятых заказов (статус "Выполнено")
+async def get_accepted_order_groups() -> int:
+    count = 0
+    async with async_session() as session:
+        result = await session.scalars(select(OrderGroup))
+        groups = result.all()
+        for group in groups:
+            if group.order_ids:
+                order = await get_order_by_id(group.order_ids[0])
+                if order and order.status == "Выполнено":
+                    count += 1
+        return count
+
+# Функция для получения количества отмененных заказов (статус "Отменен")
+async def get_cancelled_order_groups() -> int:
+    count = 0
+    async with async_session() as session:
+        result = await session.scalars(select(OrderGroup))
+        groups = result.all()
+        for group in groups:
+            if group.order_ids:
+                order = await get_order_by_id(group.order_ids[0])
+                if order and order.status == "Отменен":
+                    count += 1
+        return count

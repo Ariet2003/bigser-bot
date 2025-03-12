@@ -121,7 +121,14 @@ def get_delete_product_confirmation_keyboard(order_item_id: int, group_id: int) 
 
 def get_accept_order_confirmation_keyboard(order_group_id: int) -> InlineKeyboardMarkup:
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Да", callback_data=f"manager_accept_order_confirm:{order_group_id}"),
-         InlineKeyboardButton(text="Нет", callback_data=f"manager_order_detail:{order_group_id}")]
+        [InlineKeyboardButton(text="Да", callback_data=f"manager_accept_order_confirm:{order_group_id}")],
+        [InlineKeyboardButton(text="Нет", callback_data=f"manager_order_detail:{order_group_id}")]
+    ])
+    return keyboard
+
+
+def go_to_manager_dashboard() -> InlineKeyboardMarkup:
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Назад", callback_data="go_to_manager_dashboard")]
     ])
     return keyboard
