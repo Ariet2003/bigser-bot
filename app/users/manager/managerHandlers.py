@@ -2,6 +2,8 @@ import json
 import re
 import pytz
 from datetime import datetime
+
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message, CallbackQuery, InputMediaPhoto
 from aiogram.filters import CommandStart, Command
 from aiogram import F, Router
@@ -61,17 +63,23 @@ async def manager_account(message: Message, state: FSMContext):
 
 
 async def safe_edit_message(message: Message, text: str, reply_markup, media: str = None):
-    if media is not None:
-        return await message.edit_media(
-            media=InputMediaPhoto(media=media, caption=text),
-            reply_markup=reply_markup
-        )
-    if message.text is not None:
-        return await message.edit_text(text, reply_markup=reply_markup)
-    elif message.caption is not None:
-        return await message.edit_caption(caption=text, reply_markup=reply_markup)
-    else:
-        return await message.answer(text, reply_markup=reply_markup)
+    try:
+        if media is not None:
+            return await message.edit_media(
+                media=InputMediaPhoto(media=media, caption=text),
+                reply_markup=reply_markup
+            )
+        if message.text is not None:
+            return await message.edit_text(text, reply_markup=reply_markup)
+        elif message.caption is not None:
+            return await message.edit_caption(caption=text, reply_markup=reply_markup)
+        else:
+            return await message.answer(text, reply_markup=reply_markup)
+    except TelegramBadRequest as e:
+        if "message is not modified" in str(e):
+            # Если новое содержимое совпадает с текущим – ничего не делаем
+            return
+        raise e
 
 # Вспомогательная функция для обновления режима просмотра товаров (список OrderItem)
 async def refresh_manager_edit_order_view(callback_query: CallbackQuery, order_group_id: int, page: int = 1):
@@ -471,3 +479,106 @@ async def manager_stats(callback_query: CallbackQuery, state: FSMContext):
     keyboard = kb.go_to_manager_dashboard()
     await safe_edit_message(callback_query.message, stats_text, reply_markup=keyboard, media=utils.manager_png)
 
+
+async def render_manager_orders_view(source, manager_id: str, status_filter: str, sort_order: str, page: int):
+    per_page = 10
+    # Получаем список групп заказов: (OrderGroup, fullname, order_datetime)
+    order_groups_data = await rq.get_manager_order_groups(manager_id, status_filter, sort_order, page, per_page)
+    total_orders = await rq.get_total_manager_order_groups(manager_id, status_filter)
+    total_pages = (total_orders + per_page - 1) // per_page if total_orders > 0 else 1
+
+    # Отображаем текст в зависимости от фильтра
+    status_text = "Принятые" if status_filter == "accepted" else "Отмененные"
+    sort_text = "По возрастанию" if sort_order == "asc" else "По убыванию"
+    caption = f"История ваших заказов\nСтатус: {status_text}\nСортировка: {sort_text}"
+    keyboard = kb.get_manager_orders_keyboard(order_groups_data, status_filter, sort_order, page, total_pages)
+
+    # Если источник – callback, редактируем сообщение, иначе отправляем новое фото с подписью
+    if isinstance(source, CallbackQuery):
+        await source.message.edit_media(
+            media=InputMediaPhoto(media=utils.manager_png, caption=caption),
+            reply_markup=keyboard
+        )
+    else:
+        await source.answer_photo(photo=utils.manager_png, caption=caption, reply_markup=keyboard)
+
+@router.callback_query(F.data == 'manager_my_orders')
+async def manager_my_orders(callback_query: CallbackQuery, state: FSMContext):
+    manager_id = str(callback_query.message.chat.id)
+    status_filter = "accepted"  # по умолчанию – Принятые заказы
+    sort_order = "asc"          # по умолчанию – сортировка по возрастанию
+    page = 1
+    await render_manager_orders_view(callback_query, manager_id, status_filter, sort_order, page)
+
+@router.callback_query(F.data.startswith("manager_my_orders_filter:"))
+async def manager_my_orders_filter(callback_query: CallbackQuery, state: FSMContext):
+    # Формат callback_data: manager_my_orders_filter:{new_filter}:{sort_order}:{page}
+    parts = callback_query.data.split(":")
+    new_filter = parts[1]  # "accepted" или "cancelled"
+    sort_order = parts[2]
+    page = int(parts[3])
+    manager_id = str(callback_query.message.chat.id)
+    await render_manager_orders_view(callback_query, manager_id, new_filter, sort_order, page)
+
+@router.callback_query(F.data.startswith("manager_my_orders_sort:"))
+async def manager_my_orders_sort(callback_query: CallbackQuery, state: FSMContext):
+    # Формат callback_data: manager_my_orders_sort:{status_filter}:{new_sort_order}:{page}
+    parts = callback_query.data.split(":")
+    status_filter = parts[1]
+    new_sort_order = parts[2]
+    page = int(parts[3])
+    manager_id = str(callback_query.message.chat.id)
+    await render_manager_orders_view(callback_query, manager_id, status_filter, new_sort_order, page)
+
+@router.callback_query(F.data.startswith("manager_my_orders_page:"))
+async def manager_my_orders_page(callback_query: CallbackQuery, state: FSMContext):
+    # Формат callback_data: manager_my_orders_page:{status_filter}:{sort_order}:{page}
+    parts = callback_query.data.split(":")
+    status_filter = parts[1]
+    sort_order = parts[2]
+    page = int(parts[3])
+    manager_id = str(callback_query.message.chat.id)
+    await render_manager_orders_view(callback_query, manager_id, status_filter, sort_order, page)
+
+@router.callback_query(F.data.startswith("manager_order_detail_my:"))
+async def manager_order_detail_my(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    order_group_id = int(callback_query.data.split(":")[1])
+    group = await rq.get_order_group_by_id(order_group_id)
+    if not group:
+        await safe_edit_message(callback_query.message, "Группа заказа не найдена.", reply_markup=None)
+        return
+
+    first_order = await rq.get_order_by_id(group.order_ids[0])
+    items_lines = []
+    total_cost = 0.0
+    index = 1
+    # Формируем список товаров по группам заказов
+    for order_id in group.order_ids:
+        order = await rq.get_order_by_id(order_id)
+        if not order:
+            continue
+        for item in order.order_items:
+            product = await rq.get_product(item.product_id)
+            color_name = await rq.catalog_get_color_name(item.chosen_color) if item.chosen_color is not None else "N/A"
+            size_name = await rq.catalog_get_size_name(item.chosen_size) if item.chosen_size is not None else "N/A"
+            items_lines.append(f"{index}. {product.name} ({color_name}, {size_name}) - {item.quantity}шт.")
+            total_cost += item.quantity * float(product.price)
+            index += 1
+    items_text = "\n".join(items_lines)
+    user_info = await rq.get_user_info_by_id(str(first_order.user_id))
+    fullname = user_info.get("full_name", "N/A")
+    phone = user_info.get("phone_number", "N/A")
+    address = user_info.get("address", "N/A")
+    details_lines = [items_text, ""]
+    if first_order.delivery_method == "доставка":
+        details_lines.append(f"адрес: {address}")
+    details_lines.append(f"номер: {phone}")
+    details_lines.append(f"фИО: {fullname}")
+    details_lines.append("")
+    details_lines.append(f"тип заказа: {first_order.delivery_method}")
+    details_lines.append(f"статус: {first_order.status}")
+    details_lines.append(f"Сумма заказа: {total_cost:.2f}")
+    details_text = "\n".join(details_lines)
+    keyboard = kb.get_manager_order_detail_keyboard_m(group.id)
+    await safe_edit_message(callback_query.message, details_text, reply_markup=keyboard)

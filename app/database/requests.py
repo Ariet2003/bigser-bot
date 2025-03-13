@@ -1,4 +1,4 @@
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
 from sqlalchemy.orm import selectinload
 from sqlalchemy import or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1187,22 +1187,32 @@ async def update_order_status(order_ids: List[int], new_status: str, manager_id:
             stmt = update(Order).where(Order.id.in_(order_ids)).values(status=new_status, processed_by_id=manager_id)
             await session.execute(stmt)
 
+            # Загружаем все группы заказов
+            result = await session.execute(select(OrderGroup))
+            groups = result.scalars().all()
+
+            for group in groups:
+                # Преобразуем order_ids из JSON (если хранится как TEXT/JSON)
+                group_order_ids = json.loads(group.order_ids) if isinstance(group.order_ids, str) else group.order_ids
+
+                # Проверяем, есть ли пересечение с order_ids
+                if any(order_id in group_order_ids for order_id in order_ids):
+                    group.processed_by_id = manager_id  # Записываем id менеджера
+
             if new_status == "Удален":
-                # Получаем все записи OrderGroup
-                result = await session.execute(select(OrderGroup))
-                groups = result.scalars().all()
                 for group in groups:
-                    # Если среди order_ids группы есть заказы, которые изменены на "Удален",
-                    # удаляем их из списка
-                    updated_ids = [oid for oid in group.order_ids if oid not in order_ids]
-                    if updated_ids != group.order_ids:
-                        group.order_ids = updated_ids
+                    group_order_ids = json.loads(group.order_ids) if isinstance(group.order_ids, str) else group.order_ids
+                    updated_ids = [oid for oid in group_order_ids if oid not in order_ids]
+                    if updated_ids != group_order_ids:
+                        group.order_ids = json.dumps(updated_ids)  # Сохраняем обратно как JSON-строку
+
             await session.commit()
             return True
         except SQLAlchemyError as e:
             print(f"Error updating order status: {e}")
             await session.rollback()
             return False
+
 
 
 async def delete_product_from_order_group(order_item_id: int) -> bool:
@@ -1276,4 +1286,67 @@ async def get_cancelled_order_groups() -> int:
                 order = await get_order_by_id(group.order_ids[0])
                 if order and order.status == "Отменен":
                     count += 1
+        return count
+
+
+# Получение внутреннего id менеджера по его telegram_id
+async def get_manager_internal_id(telegram_id: str) -> Optional[int]:
+    async with async_session() as session:
+        result = await session.scalars(select(User).where(User.telegram_id == telegram_id))
+        user = result.first()
+        return user.id if user else None
+
+
+async def get_manager_order_groups(manager_id: str, status_filter: str, sort_order: str, page: int, per_page: int) -> \
+List[Tuple[OrderGroup, str, any]]:
+    # Получаем внутренний id менеджера по telegram_id
+    internal_id = await get_manager_internal_id(manager_id)
+    if internal_id is None:
+        return []
+    # Приводим id к строке для сравнения с processed_by_id
+    manager_id_str = str(internal_id)
+
+    async with async_session() as session:
+        result = await session.scalars(select(OrderGroup).where(OrderGroup.processed_by_id == manager_id_str))
+        groups = result.all()
+        filtered = []
+        for group in groups:
+            if group.order_ids:
+                first_order = await get_order_by_id(group.order_ids[0])
+                if first_order:
+                    # Для принятых заказов ожидаем статус "Выполнено"
+                    if status_filter == "accepted" and first_order.status == "Выполнено":
+                        user_info = await get_user_info_by_id(str(first_order.user_id))
+                        fullname = user_info.get("full_name", "N/A")
+                        filtered.append((group, fullname, first_order.order_datetime))
+                    # Для отменённых заказов ожидаем статус "Отменен"
+                    elif status_filter == "cancelled" and first_order.status == "Отменен":
+                        user_info = await get_user_info_by_id(str(first_order.user_id))
+                        fullname = user_info.get("full_name", "N/A")
+                        filtered.append((group, fullname, first_order.order_datetime))
+        reverse = (sort_order == "desc")
+        filtered.sort(key=lambda x: x[2], reverse=reverse)
+        start = (page - 1) * per_page
+        end = start + per_page
+        return filtered[start:end]
+
+
+async def get_total_manager_order_groups(manager_id: str, status_filter: str) -> int:
+    internal_id = await get_manager_internal_id(manager_id)
+    if internal_id is None:
+        return 0
+    manager_id_str = str(internal_id)
+
+    async with async_session() as session:
+        result = await session.scalars(select(OrderGroup).where(OrderGroup.processed_by_id == manager_id_str))
+        groups = result.all()
+        count = 0
+        for group in groups:
+            if group.order_ids:
+                first_order = await get_order_by_id(group.order_ids[0])
+                if first_order:
+                    if status_filter == "accepted" and first_order.status == "Выполнено":
+                        count += 1
+                    elif status_filter == "cancelled" and first_order.status == "Отменен":
+                        count += 1
         return count

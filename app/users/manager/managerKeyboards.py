@@ -132,3 +132,58 @@ def go_to_manager_dashboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="Назад", callback_data="go_to_manager_dashboard")]
     ])
     return keyboard
+
+
+def get_manager_orders_keyboard(order_groups_data: list, status_filter: str, sort_order: str, page: int,
+                                total_pages: int) -> InlineKeyboardMarkup:
+    keyboard_buttons = []
+    # Кнопки для заказов в формате "ФИО покупателя - дата заказа"
+    for (group, fullname, order_datetime) in order_groups_data:
+        date_str = order_datetime.strftime("%d-%m-%Y")
+        button_text = f"{fullname} - {date_str}"
+        keyboard_buttons.append(
+            [InlineKeyboardButton(text=button_text, callback_data=f"manager_order_detail_my:{group.id}")])
+
+    # Пагинация
+    pagination = []
+    if page > 1:
+        pagination.append(InlineKeyboardButton(text="<<",
+                                               callback_data=f"manager_my_orders_page:{status_filter}:{sort_order}:{page - 1}"))
+    pagination.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="ignore"))
+    if page < total_pages:
+        pagination.append(InlineKeyboardButton(text=">>",
+                                               callback_data=f"manager_my_orders_page:{status_filter}:{sort_order}:{page + 1}"))
+    if pagination:
+        keyboard_buttons.append(pagination)
+
+    # Кнопка для переключения фильтра
+    # Если сейчас отображаются принятые ("accepted"), кнопка должна показывать "Отмененные" и наоборот.
+    if status_filter == "accepted":
+        filter_button = InlineKeyboardButton(
+            text="Отмененные",
+            callback_data=f"manager_my_orders_filter:cancelled:{sort_order}:{page}"
+        )
+    else:
+        filter_button = InlineKeyboardButton(
+            text="Принятые",
+            callback_data=f"manager_my_orders_filter:accepted:{sort_order}:{page}"
+        )
+
+    # Кнопка для смены порядка сортировки
+    sort_button = InlineKeyboardButton(
+        text="По убыванию" if sort_order == "asc" else "По возрастанию",
+        callback_data=f"manager_my_orders_sort:{status_filter}:{'desc' if sort_order == 'asc' else 'asc'}:{page}"
+    )
+    keyboard_buttons.append([filter_button, sort_button])
+
+    # Кнопка "Назад"
+    keyboard_buttons.append([InlineKeyboardButton(text="Назад", callback_data="go_to_manager_dashboard")])
+
+    return InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+
+
+def get_manager_order_detail_keyboard_m(order_group_id: int) -> InlineKeyboardMarkup:
+    # В данном примере кнопка "Назад" возвращает к списку заказов
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Назад", callback_data="manager_my_orders")]
+    ])
