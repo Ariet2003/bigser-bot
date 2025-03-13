@@ -1350,3 +1350,8 @@ async def get_total_manager_order_groups(manager_id: str, status_filter: str) ->
                     elif status_filter == "cancelled" and first_order.status == "Отменен":
                         count += 1
         return count
+
+async def get_user_by_telegram_id_manager(telegram_id: str) -> Optional[User]:
+    async with async_session() as session:
+        result = await session.scalars(select(User).where(User.telegram_id == telegram_id))
+        return result.first()

@@ -582,3 +582,23 @@ async def manager_order_detail_my(callback_query: CallbackQuery, state: FSMConte
     details_text = "\n".join(details_lines)
     keyboard = kb.get_manager_order_detail_keyboard_m(group.id)
     await safe_edit_message(callback_query.message, details_text, reply_markup=keyboard)
+
+
+@router.callback_query(F.data == 'manager_profile')
+async def profile_handler(callback_query: CallbackQuery, state: FSMContext):
+    telegram_id = str(callback_query.message.chat.id)
+    user = await rq.get_user_by_telegram_id_manager(telegram_id)
+    if not user:
+        await callback_query.answer("Профиль не найден.", show_alert=True)
+        return
+
+    text = (
+        f"ID: {user.id}\n"
+        f"Telegram ID: {user.telegram_id}\n"
+        f"ФИО: {user.full_name}\n"
+        f"Адрес: {user.address}\n"
+        f"Телефон: {user.phone_number}\n"
+        f"Роль: {user.role}"
+    )
+    await safe_edit_message(callback_query.message, text, reply_markup=kb.go_to_manager_dashboard())
+
