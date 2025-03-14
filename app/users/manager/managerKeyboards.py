@@ -8,6 +8,7 @@ manager_button = InlineKeyboardMarkup(inline_keyboard=[
      InlineKeyboardButton(text="👤 Профиль", callback_data='manager_profile')]
 ])
 
+
 def get_new_orders_keyboard(order_groups: list, page: int, total_pages: int) -> InlineKeyboardMarkup:
     buttons = []
     for idx, group in enumerate(order_groups, start=1):
@@ -31,6 +32,7 @@ def get_new_orders_keyboard(order_groups: list, page: int, total_pages: int) -> 
     keyboard_buttons.append([InlineKeyboardButton(text="Назад", callback_data="go_to_manager_dashboard")])
     return InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
 
+
 def get_manager_order_detail_keyboard(order_group_id: int) -> InlineKeyboardMarkup:
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Редактировать заказ", callback_data=f"manager_edit_order:{order_group_id}")],
@@ -40,12 +42,14 @@ def get_manager_order_detail_keyboard(order_group_id: int) -> InlineKeyboardMark
     ])
     return keyboard
 
+
 def get_cancel_order_confirmation_keyboard(order_group_id: int) -> InlineKeyboardMarkup:
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Да", callback_data=f"manager_cancel_order_confirm:{order_group_id}")],
         [InlineKeyboardButton(text="Нет", callback_data=f"manager_order_detail:{order_group_id}")]
     ])
     return keyboard
+
 
 def get_manager_main_keyboard() -> InlineKeyboardMarkup:
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -54,6 +58,7 @@ def get_manager_main_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="На главную", callback_data="go_to_manager_dashboard")]
     ])
     return keyboard
+
 
 def get_manager_order_edit_keyboard(order_group_id: int, order_items: list, page: int, total_pages: int) -> InlineKeyboardMarkup:
     buttons = []
