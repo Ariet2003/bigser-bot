@@ -405,10 +405,15 @@ async def get_all_subcategories() -> list:
 async def update_product(product_id: int, product_data: dict) -> bool:
     async with async_session() as session:
         try:
-            await session.execute(
-                update(Product).where(Product.id == product_id).values(**product_data)
-            )
-            await session.commit()
+            def _update(sync_session):
+                sync_session.execute(
+                    update(Product)
+                    .where(Product.id == product_id)
+                    .values(**product_data)
+                )
+                sync_session.commit()
+
+            await session.run_sync(_update)
             return True
         except Exception as e:
             print(f"Ошибка при обновлении продукта {product_id}: {e}")
@@ -416,17 +421,24 @@ async def update_product(product_id: int, product_data: dict) -> bool:
             return False
 
 
+
 async def add_product(product_data: dict) -> Optional[int]:
     async with async_session() as session:
         try:
-            new_product = Product(**product_data)
-            session.add(new_product)
-            await session.commit()
-            return new_product.id
+            # Функция, выполняющая синхронную логику в пределах сессии
+            def _add_product(sync_session):
+                new_product = Product(**product_data)
+                sync_session.add(new_product)
+                sync_session.commit()
+                return new_product.id
+
+            new_product_id = await session.run_sync(_add_product)
+            return new_product_id
         except Exception as e:
             print(f"Ошибка при добавлении продукта: {e}")
             await session.rollback()
             return None
+
 
 
 async def get_product_by_id(product_id: int):
@@ -447,13 +459,20 @@ async def get_product_by_id(product_id: int):
 async def delete_product(product_id: int) -> bool:
     async with async_session() as session:
         try:
-            await session.execute(delete(Product).where(Product.id == product_id))
-            await session.commit()
+            def _delete(sync_session):
+                sync_session.execute(
+                    delete(Product)
+                    .where(Product.id == product_id)
+                )
+                sync_session.commit()
+
+            await session.run_sync(_delete)
             return True
         except Exception as e:
             print(f"Ошибка при удалении продукта {product_id}: {e}")
             await session.rollback()
             return False
+
 
 
 async def update_product_photos(product_id: int, file_ids: List[str]) -> bool:
