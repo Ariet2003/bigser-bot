@@ -36,6 +36,7 @@ async def check_role(telegram_id: str) -> str:
             await session.commit()
             return "USER"
 
+
 async def add_or_update_user(telegram_id: str, full_name: str, username: str, role: str) -> bool:
     try:
         async with async_session() as session:
@@ -55,6 +56,7 @@ async def add_or_update_user(telegram_id: str, full_name: str, username: str, ro
         print(f"Ошибка при добавлении/обновлении пользователя: {e}")
         return False
 
+
 async def get_users_by_role(role: str) -> str:
     async with async_session() as session:
         result = await session.execute(
@@ -62,6 +64,7 @@ async def get_users_by_role(role: str) -> str:
         )
         users = [{"id": user_id, "full_name": full_name} for user_id, full_name in result.all()]
         return json.dumps(users, ensure_ascii=False)
+
 
 async def get_admins_by_page(page: int, per_page: int = 10) -> List[Dict]:
     async with async_session() as session:
@@ -71,11 +74,13 @@ async def get_admins_by_page(page: int, per_page: int = 10) -> List[Dict]:
         admins = [{"id": admin_id, "full_name": full_name} for admin_id, full_name in result.all()]
         return admins
 
+
 async def get_total_admins() -> int:
     async with async_session() as session:
         query = select(func.count()).select_from(User).where(User.role == "ADMIN")
         total = await session.scalar(query)
         return total
+
 
 async def get_admin_by_id(admin_id: int) -> Optional[Dict]:
     async with async_session() as session:
@@ -85,6 +90,7 @@ async def get_admin_by_id(admin_id: int) -> Optional[Dict]:
             return {"id": admin.id, "full_name": admin.full_name, "role": admin.role, "telegram_id": admin.telegram_id,
                     "phone_number": admin.phone_number}
         return None
+
 
 async def update_admin_fullname(admin_id: int, new_fullname: str) -> bool:
     async with async_session() as session:
@@ -99,6 +105,7 @@ async def update_admin_fullname(admin_id: int, new_fullname: str) -> bool:
             await session.rollback()
             return False
 
+
 async def update_admin_role(admin_id: int, new_role: str) -> bool:
     async with async_session() as session:
         try:
@@ -112,6 +119,7 @@ async def update_admin_role(admin_id: int, new_role: str) -> bool:
             await session.rollback()
             return False
 
+
 async def get_managers_by_page(page: int, per_page: int = 10) -> List[Dict]:
     async with async_session() as session:
         query = select(User.id, User.full_name).where(User.role == "MANAGER")\
@@ -120,11 +128,13 @@ async def get_managers_by_page(page: int, per_page: int = 10) -> List[Dict]:
         managers = [{"id": manager_id, "full_name": full_name} for manager_id, full_name in result.all()]
         return managers
 
+
 async def get_total_managers() -> int:
     async with async_session() as session:
         query = select(func.count()).select_from(User).where(User.role == "MANAGER")
         total = await session.scalar(query)
         return total
+
 
 async def get_manager_by_id(manager_id: int) -> Optional[Dict]:
     async with async_session() as session:
@@ -133,6 +143,7 @@ async def get_manager_by_id(manager_id: int) -> Optional[Dict]:
         if manager:
             return {"id": manager.id, "full_name": manager.full_name, "role": manager.role}
         return None
+
 
 async def update_manager_fullname(manager_id: int, new_fullname: str) -> bool:
     async with async_session() as session:
@@ -147,6 +158,7 @@ async def update_manager_fullname(manager_id: int, new_fullname: str) -> bool:
             await session.rollback()
             return False
 
+
 async def update_manager_role(manager_id: int, new_role: str) -> bool:
     async with async_session() as session:
         try:
@@ -160,6 +172,7 @@ async def update_manager_role(manager_id: int, new_role: str) -> bool:
             await session.rollback()
             return False
 
+
 async def update_manager_username(manager_id: int, new_username: str) -> bool:
     async with async_session() as session:
         try:
@@ -172,6 +185,7 @@ async def update_manager_username(manager_id: int, new_username: str) -> bool:
             print(f"Ошибка при обновлении username: {e}")
             await session.rollback()
             return False
+
 
 async def get_user_by_id(user_id: int) -> Optional[Dict]:
     async with async_session() as session:
@@ -201,11 +215,13 @@ async def get_categories_by_page(page: int, per_page: int = 10) -> List[Dict]:
         categories = [{"id": cat_id, "name": name} for cat_id, name in result.all()]
         return categories
 
+
 async def get_total_categories() -> int:
     async with async_session() as session:
         query = select(func.count()).select_from(Category)
         total = await session.scalar(query)
         return total
+
 
 async def get_category_by_id(category_id: int) -> Optional[Dict]:
     async with async_session() as session:
@@ -214,6 +230,7 @@ async def get_category_by_id(category_id: int) -> Optional[Dict]:
         if category:
             return {"id": category.id, "name": category.name}
         return None
+
 
 async def update_category_name(category_id: int, new_name: str) -> bool:
     async with async_session() as session:
@@ -228,6 +245,7 @@ async def update_category_name(category_id: int, new_name: str) -> bool:
             await session.rollback()
             return False
 
+
 async def add_category(name: str) -> bool:
     async with async_session() as session:
         try:
@@ -239,6 +257,7 @@ async def add_category(name: str) -> bool:
             print(f"Ошибка при добавлении категории: {e}")
             await session.rollback()
             return False
+
 
 async def delete_category(category_id: int) -> bool:
     async with async_session() as session:
@@ -267,11 +286,13 @@ async def get_subcategories_by_page(page: int, per_page: int = 10) -> List[Dict]
         ]
         return subcategories
 
+
 async def get_total_subcategories() -> int:
     async with async_session() as session:
         query = select(func.count()).select_from(Subcategory)
         total = await session.scalar(query)
         return total
+
 
 async def get_subcategory_by_id(subcategory_id: int) -> Optional[Dict]:
     async with async_session() as session:
@@ -286,6 +307,7 @@ async def get_subcategory_by_id(subcategory_id: int) -> Optional[Dict]:
             subcat, cat_name = row
             return {"id": subcat.id, "name": subcat.name, "category_id": subcat.category_id, "category_name": cat_name}
         return None
+
 
 async def update_subcategory(subcategory_id: int, new_name: str, parent_category_id: int) -> bool:
     async with async_session() as session:
@@ -303,6 +325,7 @@ async def update_subcategory(subcategory_id: int, new_name: str, parent_category
             await session.rollback()
             return False
 
+
 async def add_subcategory(name: str, parent_category_id: int) -> bool:
     async with async_session() as session:
         try:
@@ -314,6 +337,7 @@ async def add_subcategory(name: str, parent_category_id: int) -> bool:
             print(f"Ошибка при добавлении подкатегории: {e}")
             await session.rollback()
             return False
+
 
 async def delete_subcategory(subcategory_id: int) -> bool:
     async with async_session() as session:
@@ -421,7 +445,6 @@ async def update_product(product_id: int, product_data: dict) -> bool:
             return False
 
 
-
 async def add_product(product_data: dict) -> Optional[int]:
     async with async_session() as session:
         try:
@@ -438,7 +461,6 @@ async def add_product(product_data: dict) -> Optional[int]:
             print(f"Ошибка при добавлении продукта: {e}")
             await session.rollback()
             return None
-
 
 
 async def get_product_by_id(product_id: int):
