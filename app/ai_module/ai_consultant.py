@@ -1610,10 +1610,10 @@ async def create_product_carousel(products: List[Dict], product_index: int = 0, 
     if len(photos) > 1:
         photo_nav = InlineKeyboardBuilder()
         if photo_index > 0:
-            photo_nav.button(text="◀️ Пред. фото",
+            photo_nav.button(text="◀️ Фото",
                              callback_data=f"photo:prev:{product['id']}:{product_index}:{photo_index}")
         if photo_index < len(photos) - 1:
-            photo_nav.button(text="След. фото ▶️",
+            photo_nav.button(text="Фото ▶️",
                              callback_data=f"photo:next:{product['id']}:{product_index}:{photo_index}")
         # Добавляем как отдельный ряд в начале
         keyboard.row(*photo_nav.as_markup().inline_keyboard[0])
@@ -1621,10 +1621,10 @@ async def create_product_carousel(products: List[Dict], product_index: int = 0, 
         # Далее формируем ряд для навигации по товарам и добавления в корзину
     nav_builder = InlineKeyboardBuilder()
     if product_index > 0:
-        nav_builder.button(text="◀️ Назад", callback_data=f"carousel:prev:{product_index}:{photo_index}")
-    nav_builder.button(text="🛒 Добавить в корзину", callback_data=f"add_to_cart:{product['id']}")
+        nav_builder.button(text="◀️ Товар", callback_data=f"carousel:prev:{product_index}:{photo_index}")
+    nav_builder.button(text="🛒 Выбрать", callback_data=f"add_to_cart:{product['id']}")
     if product_index < len(products) - 1:
-        nav_builder.button(text="Вперед ▶️", callback_data=f"carousel:next:{product_index}:{photo_index}")
+        nav_builder.button(text="Товар ▶️", callback_data=f"carousel:next:{product_index}:{photo_index}")
     keyboard.row(*nav_builder.as_markup().inline_keyboard[0])
 
     # Формируем подпись: можно добавить рекомендацию, цену и т.д.

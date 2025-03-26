@@ -262,7 +262,7 @@ async def select_subcategory(callback_query: CallbackQuery, state: FSMContext):
     category_id = int(data[2])
     products = await rq.catalog_get_products_by_subcategory(subcat_id)
     if not products:
-        await safe_edit_message(callback_query.message, "Нет товаров в этой подкатегории.", reply_markup=None)
+        await safe_edit_message(callback_query.message, "Нет товаров в этой подкатегории, нажмите на /start.", reply_markup=None)
         return
     product_index = 0
     photo_index = 0
@@ -1207,7 +1207,6 @@ async def order_contact(callback_query: CallbackQuery, state: FSMContext):
     if not first_order or not first_order.processed_by_id:
         await callback_query.answer("Заказ все еще в обработке.", show_alert=True)
         return
-
     # Получаем данные менеджера (из таблицы User) по processed_by_id
     manager = await rq.get_user_by_id_user(first_order.processed_by_id)
     if not manager or not manager.telegram_id:

@@ -1134,9 +1134,10 @@ async def get_user_order_groups(user_id: str) -> List[OrderGroup]:
         )
         return result.all()
 
-async def get_user_by_id_user(user_id: int) -> Optional[User]:
+async def get_user_by_id_user(telegram_id: str) -> Optional[User]:
     async with async_session() as session:
-        return await session.get(User, user_id)
+        result = await session.execute(select(User).where(User.telegram_id == telegram_id))
+        return result.scalar_one_or_none()
 
 
 
