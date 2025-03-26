@@ -390,8 +390,8 @@ def create_report_main_keyboard(report_filters: dict, manager_name: str = "вс�
     status_text = {
         "all": "все статусы",
         "Ожидание": "Ожидание",
-        "Принято": "Принято",
-        "Отменено": "Отменено"
+        "Выполнено": "Выполнено",
+        "Отменен": "Отменен"
     }.get(status_val, status_val)
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -436,8 +436,8 @@ def status_filter_keyboard() -> InlineKeyboardMarkup:
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="Ожидание", callback_data="filter_status:Ожидание"),
-            InlineKeyboardButton(text="Принято", callback_data="filter_status:Принято"),
-            InlineKeyboardButton(text="Отменено", callback_data="filter_status:Отменено")
+            InlineKeyboardButton(text="Выполнено", callback_data="filter_status:Выполнено"),
+            InlineKeyboardButton(text="Отменен", callback_data="filter_status:Отменен")
         ],
         [
             InlineKeyboardButton(text="все статусы", callback_data="filter_status:all")

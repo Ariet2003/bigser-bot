@@ -20,15 +20,18 @@ def get_new_orders_keyboard(order_groups: list, page: int, total_pages: int) -> 
         keyboard_buttons.append(row1)
     if row2:
         keyboard_buttons.append(row2)
-    # Пагинация
-    pagination = []
-    if page > 1:
-        pagination.append(InlineKeyboardButton(text="<<", callback_data=f"manager_new_orders_page:{page-1}"))
-    pagination.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="ignore"))
-    if page < total_pages:
-        pagination.append(InlineKeyboardButton(text=">>", callback_data=f"manager_new_orders_page:{page+1}"))
-    if pagination:
-        keyboard_buttons.append(pagination)
+
+    # Пагинация только если есть заказы и total_pages больше 0
+    if order_groups and total_pages > 0:
+        pagination = []
+        if page > 1:
+            pagination.append(InlineKeyboardButton(text="<<", callback_data=f"manager_new_orders_page:{page - 1}"))
+        pagination.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="ignore"))
+        if page < total_pages:
+            pagination.append(InlineKeyboardButton(text=">>", callback_data=f"manager_new_orders_page:{page + 1}"))
+        if pagination:
+            keyboard_buttons.append(pagination)
+
     keyboard_buttons.append([InlineKeyboardButton(text="Назад", callback_data="go_to_manager_dashboard")])
     return InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
 
@@ -38,7 +41,7 @@ def get_manager_order_detail_keyboard(order_group_id: int) -> InlineKeyboardMark
         [InlineKeyboardButton(text="Редактировать заказ", callback_data=f"manager_edit_order:{order_group_id}")],
         [InlineKeyboardButton(text="Отменить", callback_data=f"manager_cancel_order:{order_group_id}"),
          InlineKeyboardButton(text="Принять", callback_data=f"manager_accept_order:{order_group_id}")],
-        [InlineKeyboardButton(text="Назад", callback_data="manager_new_orders")]
+        [InlineKeyboardButton(text="Назад", callback_data=f"manager_new_orders_back:{order_group_id}")]
     ])
     return keyboard
 
@@ -147,22 +150,33 @@ def get_manager_orders_keyboard(order_groups_data: list, status_filter: str, sor
         date_str = order_datetime.strftime("%d-%m-%Y")
         button_text = f"{fullname} - {date_str}"
         keyboard_buttons.append(
-            [InlineKeyboardButton(text=button_text, callback_data=f"manager_order_detail_my:{group.id}")])
+            [InlineKeyboardButton(text=button_text, callback_data=f"manager_order_detail_my:{group.id}")]
+        )
 
-    # Пагинация
-    pagination = []
-    if page > 1:
-        pagination.append(InlineKeyboardButton(text="<<",
-                                               callback_data=f"manager_my_orders_page:{status_filter}:{sort_order}:{page - 1}"))
-    pagination.append(InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="ignore"))
-    if page < total_pages:
-        pagination.append(InlineKeyboardButton(text=">>",
-                                               callback_data=f"manager_my_orders_page:{status_filter}:{sort_order}:{page + 1}"))
-    if pagination:
-        keyboard_buttons.append(pagination)
+    # Пагинация отображается только если есть заказы и total_pages больше 0
+    if order_groups_data and total_pages > 0:
+        pagination = []
+        if page > 1:
+            pagination.append(
+                InlineKeyboardButton(
+                    text="<<",
+                    callback_data=f"manager_my_orders_page:{status_filter}:{sort_order}:{page - 1}"
+                )
+            )
+        pagination.append(
+            InlineKeyboardButton(text=f"{page}/{total_pages}", callback_data="ignore")
+        )
+        if page < total_pages:
+            pagination.append(
+                InlineKeyboardButton(
+                    text=">>",
+                    callback_data=f"manager_my_orders_page:{status_filter}:{sort_order}:{page + 1}"
+                )
+            )
+        if pagination:
+            keyboard_buttons.append(pagination)
 
     # Кнопка для переключения фильтра
-    # Если сейчас отображаются принятые ("accepted"), кнопка должна показывать "Отмененные" и наоборот.
     if status_filter == "accepted":
         filter_button = InlineKeyboardButton(
             text="Отмененные",
@@ -185,6 +199,7 @@ def get_manager_orders_keyboard(order_groups_data: list, status_filter: str, sor
     keyboard_buttons.append([InlineKeyboardButton(text="Назад", callback_data="go_to_manager_dashboard")])
 
     return InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+
 
 
 def get_manager_order_detail_keyboard_m(order_group_id: int) -> InlineKeyboardMarkup:

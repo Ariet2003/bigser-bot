@@ -157,9 +157,6 @@ async def add_admin_third(message: Message, state: FSMContext):
     new_admin_telegram_id = state_data.get('new_admin_telegram_id')
     new_admin_fullname = message.text
 
-    print(new_admin_telegram_id)
-    print(new_admin_fullname)
-
     is_added = await rq.add_or_update_user(telegram_id=new_admin_telegram_id,
                                      full_name=new_admin_fullname,
                                      role="ADMIN")
@@ -1517,7 +1514,7 @@ async def get_report_filters(state: FSMContext) -> dict:
         filters = {
             "date": "all",    # варианты: "all", "year", "month", "week" или пользовательский период
             "manager": "all", # "all" или id менеджера
-            "status": "all"   # "all", "Ожидание", "Принято", "Отменено"
+            "status": "all"   # "all", "Ожидание", "Выполнено", "Отменен"
         }
         await state.update_data(report_filters=filters)
     else:

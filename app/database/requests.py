@@ -583,8 +583,8 @@ async def get_report_data(filters: dict) -> dict:
             status_filter = filters.get("status", "all")
             if status_filter not in ("all", "все статусы"):
                 mapping = {
-                    "Принятый": "Принято",
-                    "Отмененный": "Отменено"
+                    "Принятый": "Выполнено",
+                    "Отмененный": "Отменен"
                 }
                 status_filter_db = mapping.get(status_filter, status_filter)
                 conditions.append(Order.status == status_filter_db)
@@ -1094,7 +1094,7 @@ async def submit_all_orders(user_id: str) -> bool:
                 return False
 
             # Обновляем статус заказов на "В обработке"
-            stmt_update = update(Order).where(Order.id.in_(order_ids)).values(status="В обработке")
+            stmt_update = update(Order).where(Order.id.in_(order_ids)).values(status="Ожидание")
             await session.execute(stmt_update)
 
             # Создаём запись группы заказов
@@ -1222,7 +1222,7 @@ async def get_new_order_groups(page: int, per_page: int) -> List[OrderGroup]:
         for group in groups:
             if group.order_ids:
                 order = await get_order_by_id(group.order_ids[0])
-                if order and order.status == "В обработке":
+                if order and order.status == "Ожидание":
                     new_groups.append(group)
         start = (page - 1) * per_page
         end = start + per_page
@@ -1236,7 +1236,7 @@ async def get_total_new_order_groups() -> int:
         for group in groups:
             if group.order_ids:
                 order = await get_order_by_id(group.order_ids[0])
-                if order and order.status == "В обработке":
+                if order and order.status == "Ожидание":
                     count += 1
         return count
 
@@ -1366,15 +1366,8 @@ async def get_manager_internal_id(telegram_id: str) -> Optional[int]:
 
 async def get_manager_order_groups(manager_id: str, status_filter: str, sort_order: str, page: int, per_page: int) -> \
 List[Tuple[OrderGroup, str, any]]:
-    # Получаем внутренний id менеджера по telegram_id
-    internal_id = await get_manager_internal_id(manager_id)
-    if internal_id is None:
-        return []
-    # Приводим id к строке для сравнения с processed_by_id
-    manager_id_str = str(internal_id)
-
     async with async_session() as session:
-        result = await session.scalars(select(OrderGroup).where(OrderGroup.processed_by_id == manager_id_str))
+        result = await session.scalars(select(OrderGroup).where(OrderGroup.processed_by_id == manager_id))
         groups = result.all()
         filtered = []
         for group in groups:

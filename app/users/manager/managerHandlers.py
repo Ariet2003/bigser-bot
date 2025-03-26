@@ -103,6 +103,19 @@ async def refresh_manager_edit_order_view(callback_query: CallbackQuery, order_g
     caption = "Список товаров данного заказа"
     await safe_edit_message(callback_query.message, caption, reply_markup=keyboard, media=utils.manager_png)
 
+
+@router.callback_query(F.data.startswith('manager_new_orders_back:'))
+async def manager_new_orders_back(callback_query: CallbackQuery, state: FSMContext):
+    data = callback_query.data.split(":")
+    order_group_id = int(data[1])
+    group = await rq.get_order_group_by_id(order_group_id)
+    await rq.update_order_status(
+        order_ids=group.order_ids,
+        new_status="Ожидание",
+        manager_id=None
+    )
+    await manager_new_orders(callback_query, state)
+
 # Обработчик кнопки "Новые заказы"
 @router.callback_query(F.data == 'manager_new_orders')
 async def manager_new_orders(callback_query: CallbackQuery, state: FSMContext):
@@ -143,9 +156,12 @@ async def manager_order_detail(callback_query: CallbackQuery, state: FSMContext)
         return
 
     first_order = await rq.get_order_by_id(group.order_ids[0])
-    if first_order.status != "В обработке":
-        await callback_query.answer("Заказ просматривает другой менеджер.", show_alert=True)
-        return
+
+    await rq.update_order_status(
+        order_ids=group.order_ids,
+        new_status="В обработке",
+        manager_id=callback_query.message.chat.id
+    )
 
     items_lines = []
     total_cost = 0.0
@@ -200,13 +216,8 @@ async def manager_cancel_order_confirm(callback_query: CallbackQuery, state: FSM
         await callback_query.answer("Группа заказа не найдена.", show_alert=True)
         return
 
-    # Получаем менеджера по telegram_id
-    manager = await rq.get_user_by_telegram_id(str(callback_query.from_user.id))
-    if not manager:
-        await callback_query.answer("Менеджер не найден.", show_alert=True)
-        return
 
-    success = await rq.update_order_status(group.order_ids, "Отменен", manager_id=manager.id)
+    success = await rq.update_order_status(group.order_ids, "Отменен", manager_id=callback_query.message.chat.id)
     if success:
         await safe_edit_message(callback_query.message, "Заказ отменен.", reply_markup=kb.get_manager_main_keyboard())
     else:
@@ -231,13 +242,7 @@ async def manager_accept_order_confirm(callback_query: CallbackQuery, state: FSM
         await callback_query.answer("Группа заказа не найдена.", show_alert=True)
         return
 
-    # Получаем менеджера по telegram_id
-    manager = await rq.get_user_by_telegram_id(str(callback_query.from_user.id))
-    if not manager:
-        await callback_query.answer("Менеджер не найден.", show_alert=True)
-        return
-
-    success = await rq.update_order_status(group.order_ids, "Выполнено", manager_id=manager.id)
+    success = await rq.update_order_status(group.order_ids, "Выполнено", manager_id=callback_query.message.chat.id)
     if success:
         await safe_edit_message(
             callback_query.message,
@@ -275,7 +280,7 @@ async def manager_edit_order(callback_query: CallbackQuery, state: FSMContext):
     total_pages = (len(order_items) + per_page - 1) // per_page
     paginated_items = order_items[(page-1)*per_page: page*per_page]
     keyboard = kb.get_manager_order_edit_keyboard(order_group_id, paginated_items, page, total_pages)
-    caption = "Список товаров данного заказа"
+    caption = "Список товаров данного заказа 1"
     await safe_edit_message(callback_query.message, caption, reply_markup=keyboard, media=utils.manager_png)
 
 # Обработчик выбора товара для редактирования
@@ -302,11 +307,7 @@ async def manager_edit_product(callback_query: CallbackQuery, state: FSMContext)
     desc = (
         f"ПОДРОБНЕЕ О ТОВАРЕ:\n"
         f"Название: {product.name}\n"
-        f"Описание: {product.description or 'Нет описания'}\n"
         f"Цена: {product.price:.2f}\n"
-        f"Материал: {product.material or 'N/A'}\n"
-        f"Особенности: {product.features or 'N/A'}\n"
-        f"Температура: {product.temperature_range or 'N/A'}"
     )
     keyboard = kb.get_manager_product_edit_keyboard(order_item_id, product, order_item, order_group_id,
                                                       chosen_color=chosen_color, chosen_size=chosen_size)
@@ -330,11 +331,7 @@ async def manager_change_size(callback_query: CallbackQuery, state: FSMContext):
         desc = (
             f"ПОДРОБНЕЕ О ТОВАРЕ:\n"
             f"Название: {product.name}\n"
-            f"Описание: {product.description or 'Нет описания'}\n"
             f"Цена: {product.price:.2f}\n"
-            f"Материал: {product.material or 'N/A'}\n"
-            f"Особенности: {product.features or 'N/A'}\n"
-            f"Температура: {product.temperature_range or 'N/A'}"
         )
         photos = await rq.catalog_get_product_photos(product.id)
         photo_id = photos[0].file_id if photos else None
@@ -358,11 +355,7 @@ async def manager_change_color(callback_query: CallbackQuery, state: FSMContext)
         desc = (
             f"ПОДРОБНЕЕ О ТОВАРЕ:\n"
             f"Название: {product.name}\n"
-            f"Описание: {product.description or 'Нет описания'}\n"
             f"Цена: {product.price:.2f}\n"
-            f"Материал: {product.material or 'N/A'}\n"
-            f"Особенности: {product.features or 'N/A'}\n"
-            f"Температура: {product.temperature_range or 'N/A'}"
         )
         photos = await rq.catalog_get_product_photos(product.id)
         photo_id = photos[0].file_id if photos else None
@@ -386,11 +379,7 @@ async def manager_change_qty(callback_query: CallbackQuery, state: FSMContext):
         desc = (
             f"ПОДРОБНЕЕ О ТОВАРЕ:\n"
             f"Название: {product.name}\n"
-            f"Описание: {product.description or 'Нет описания'}\n"
             f"Цена: {product.price:.2f}\n"
-            f"Материал: {product.material or 'N/A'}\n"
-            f"Особенности: {product.features or 'N/A'}\n"
-            f"Температура: {product.temperature_range or 'N/A'}"
         )
         photos = await rq.catalog_get_product_photos(product.id)
         photo_id = photos[0].file_id if photos else None
@@ -482,8 +471,10 @@ async def manager_stats(callback_query: CallbackQuery, state: FSMContext):
 
 async def render_manager_orders_view(source, manager_id: str, status_filter: str, sort_order: str, page: int):
     per_page = 10
+    print(manager_id)
     # Получаем список групп заказов: (OrderGroup, fullname, order_datetime)
     order_groups_data = await rq.get_manager_order_groups(manager_id, status_filter, sort_order, page, per_page)
+    print(order_groups_data)
     total_orders = await rq.get_total_manager_order_groups(manager_id, status_filter)
     total_pages = (total_orders + per_page - 1) // per_page if total_orders > 0 else 1
 

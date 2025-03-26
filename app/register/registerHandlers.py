@@ -48,16 +48,13 @@ async def start(message: Message, state: FSMContext):
         sent_message_add_screen_ids[tuid] = {'bot_messages': [], 'user_messages': []}
     user_data = sent_message_add_screen_ids[tuid]
     user_tg_id = str(message.from_user.id)
-    print(user_tg_id)
     role = await rq.check_role(user_tg_id)
-    print(role)
     if role == "ADMIN":
         await admin_account(message, state)
     elif role == "MANAGER":
         await manager_account(message, state)
     elif role == "USER":
         result = await rq.check_user_data(user_tg_id)
-        print(result)
         if result == "Нет ФИО":
             await register_user_fullname(message, state)
         else:
