@@ -37,6 +37,17 @@ async def check_role(telegram_id: str) -> str:
             return "USER"
 
 
+async def check_user_data(telegram_id: str) -> str:
+    async with async_session() as session:
+        result = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+
+        if result.full_name is None:
+            return "Нет ФИО"
+        elif result.phone_number is None:
+            return "Нет номер телефона"
+
+
+
 async def add_or_update_user(telegram_id: str, full_name: str, username: str, role: str) -> bool:
     try:
         async with async_session() as session:
@@ -56,6 +67,23 @@ async def add_or_update_user(telegram_id: str, full_name: str, username: str, ro
         print(f"Ошибка при добавлении/обновлении пользователя: {e}")
         return False
 
+async def register_user(telegram_id: str, full_name: str, phone_number: str) -> bool:
+    try:
+        async with async_session() as session:
+            user = await session.scalar(select(User).where(User.telegram_id == telegram_id))
+            if user is not None:
+                # Обновляем данные существующего пользователя
+                user.full_name = full_name
+                user.phone_number = phone_number
+            else:
+                # Добавляем нового пользователя
+                new_user = User(telegram_id=telegram_id, full_name=full_name, phone_number=phone_number)
+                session.add(new_user)
+            await session.commit()
+            return True
+    except Exception as e:
+        print(f"Ошибка при регистрации пользователя: {e}")
+        return False
 
 async def get_users_by_role(role: str) -> str:
     async with async_session() as session:

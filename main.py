@@ -1,6 +1,8 @@
 import logging
 import asyncio
 from aiogram import Dispatcher
+
+from app.ai_module.ai_consultant import ai_router
 from app.register.registerHandlers import router
 from app.database.models import async_main
 from bot_instance import bot, dp  # Импортируем bot и dp
@@ -22,6 +24,7 @@ async def main():
         logger.exception("Ошибка при инициализации базы данных")
 
     dp.include_router(router)
+    dp.include_router(ai_router)
     logger.info("Роутеры зарегистрированы. Начинается polling бота.")
 
     try:
