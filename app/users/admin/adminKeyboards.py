@@ -191,6 +191,9 @@ def create_category_list_keyboard(categories: list, page: int, has_prev: bool, h
         pagination_buttons.append(InlineKeyboardButton(text="Следующая ➡️", callback_data=f"category_page:{page+1}"))
     if pagination_buttons:
         markup.inline_keyboard.append(pagination_buttons)
+    markup.inline_keyboard.append(
+        [InlineKeyboardButton(text="Назад", callback_data="manage_categories")]
+    )
     return markup
 
 def category_detail_keyboard(category_id: int) -> InlineKeyboardMarkup:
@@ -223,6 +226,9 @@ def create_delete_category_list_keyboard(categories: list, page: int, has_prev: 
         pagination_buttons.append(InlineKeyboardButton(text="Следующая ➡️", callback_data=f"delete_category_page:{page+1}"))
     if pagination_buttons:
         markup.inline_keyboard.append(pagination_buttons)
+    markup.inline_keyboard.append(
+        [InlineKeyboardButton(text="Назад", callback_data="manage_categories")]
+    )
     return markup
 
 def confirm_delete_category_keyboard(category_id: int) -> InlineKeyboardMarkup:
@@ -266,6 +272,9 @@ def create_subcategory_list_keyboard(subcategories: list, page: int, has_prev: b
         pagination_buttons.append(InlineKeyboardButton(text="Следующая ➡️", callback_data=f"subcategory_page:{page+1}"))
     if pagination_buttons:
         markup.inline_keyboard.append(pagination_buttons)
+    markup.inline_keyboard.append(
+        [InlineKeyboardButton(text="Назад", callback_data="manage_subcategories")]
+    )
     return markup
 
 def subcategory_detail_keyboard(subcategory_id: int) -> InlineKeyboardMarkup:
@@ -298,6 +307,9 @@ def create_delete_subcategory_list_keyboard(subcategories: list, page: int, has_
         pagination_buttons.append(InlineKeyboardButton(text="Следующая ➡️", callback_data=f"delete_subcategory_page:{page+1}"))
     if pagination_buttons:
         markup.inline_keyboard.append(pagination_buttons)
+    markup.inline_keyboard.append(
+        [InlineKeyboardButton(text="Назад", callback_data="manage_subcategories")]
+    )
     return markup
 
 def confirm_delete_subcategory_keyboard(subcategory_id: int) -> InlineKeyboardMarkup:

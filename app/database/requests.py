@@ -633,7 +633,6 @@ async def get_report_data(filters: dict) -> dict:
                     func.coalesce(User.full_name, "Не назначен").label("manager_name"),
                     Order.status,
                     Order.delivery_method,
-                    Order.payment_method,
                     func.coalesce(
                         func.sum(OrderItem.quantity * Product.price),
                         0
@@ -652,7 +651,7 @@ async def get_report_data(filters: dict) -> dict:
 
             orders_list = []
             for row in rows:
-                order_id, order_datetime, manager_name, status, delivery_method, payment_method, total_amount, products = row
+                order_id, order_datetime, manager_name, status, delivery_method, total_amount, products = row
                 if isinstance(order_datetime, datetime):
                     order_datetime = order_datetime.strftime("%Y-%m-%d %H:%M:%S")
                 orders_list.append({
@@ -661,7 +660,6 @@ async def get_report_data(filters: dict) -> dict:
                     "manager_name": manager_name,
                     "status": status,
                     "delivery_method": delivery_method,
-                    "payment_method": payment_method,
                     "total_amount": float(total_amount),
                     "products": products
                 })

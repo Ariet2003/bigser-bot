@@ -26,7 +26,7 @@ async def generate_report_excel(filters: dict) -> (BytesIO, str):
     Отчёт включает:
       • Заголовок с информацией о фильтрах (Период, Менеджер, Статус)
       • Таблицу с колонками:
-          Номер заказа, Дата заказа, Менеджер, Товары, Статус, Сумма, Доставка, Оплата
+          Номер заказа, Дата заказа, Менеджер, Товары, Статус, Сумма, Доставка
       • Диаграмму (BarChart) с агрегированными данными по статусам заказов
 
     Возвращает кортеж (file_stream, filename)
@@ -125,7 +125,7 @@ async def generate_report_excel(filters: dict) -> (BytesIO, str):
     ws["G2"].alignment = align_center
 
     # Заголовки таблицы (начинаем с 4-й строки)
-    columns = ["Номер заказа", "Дата заказа", "Менеджер", "Товары", "Статус", "Сумма", "Доставка", "Оплата"]
+    columns = ["Номер заказа", "Дата заказа", "Менеджер", "Товары", "Статус", "Сумма", "Доставка"]
     header_row = 4
     for col_idx, col_name in enumerate(columns, start=1):
         cell = ws.cell(row=header_row, column=col_idx, value=col_name)
@@ -144,12 +144,11 @@ async def generate_report_excel(filters: dict) -> (BytesIO, str):
         total_amount = order.get("total_amount", 0)
         status = order.get("status")
         delivery = order.get("delivery_method", "")
-        payment = order.get("payment_method", "")
 
         row_values = [
             order_id, order_dt, manager_name,
             products_str, status, total_amount,
-            delivery, payment
+            delivery
         ]
         for col_idx, val in enumerate(row_values, start=1):
             cell = ws.cell(row=current_row, column=col_idx, value=val)
