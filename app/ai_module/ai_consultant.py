@@ -835,7 +835,7 @@ async def get_related_products(product_name: str) -> Dict:
         # Отправляем запрос в OpenAI
         response = await asyncio.to_thread(
             openai_client.chat.completions.create,
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=[
                 {"role": "system",
                  "content": "Ты - консультант в магазине спортивной одежды Bigser. Выбери из списка товаров не более 3 товаров, которые хорошо сочетаются с основным товаром или дополняют его. Учитывай категории и подкатегории товаров."},
@@ -998,7 +998,7 @@ async def filter_products(user_query: str, user_id: int = None) -> Dict:
         # Отправляем запрос в OpenAI для поиска товаров
         response = await asyncio.to_thread(
             openai_client.chat.completions.create,
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=[
                 {"role": "system",
                  "content": """Ты - дружелюбный консультант в магазине спортивной одежды Bigser.
@@ -1227,6 +1227,7 @@ async def cmd_start(callback_query: CallbackQuery):
                - Объясни, почему именно эти товары подходят клиенту
                - Добавляй краткие рекомендации к каждому товару
                - Интересуйся, какой товар больше понравился
+               - Никогда не добавляй ссылку на картинку товара в сообщение
 
             4. Когда клиент выбирает конкретный товар:
                - Используй get_product_details для получения подробной информации
@@ -1251,6 +1252,7 @@ async def cmd_start(callback_query: CallbackQuery):
             - ВСЕГДА задавай уточняющие вопросы при недостатке деталей в запросе
             - Рекомендуй только товары, максимально соответствующие запросу клиента
             - Предлагай альтернативы, если идеального соответствия нет
+            - СТРОГО, никогда не добавляй ссылку на изображение товара в сообщение
             - Формат цены указывай в сомах
             - Отвечай на русском языке или на языке клиента.
         """}
@@ -1261,7 +1263,7 @@ async def cmd_start(callback_query: CallbackQuery):
     # Using asyncio.to_thread for the synchronous OpenAI client
     response = await asyncio.to_thread(
         openai_client.chat.completions.create,
-        model="gpt-4o-mini",
+        model="gpt-4o",
         messages=user_states[user_id]["chat_history"],
         tools=tools,
         tool_choice="auto"
@@ -1406,7 +1408,7 @@ async def process_message(message: Message):
                 # Отправляем запрос в ИИ
                 ai_response = await asyncio.to_thread(
                     openai_client.chat.completions.create,
-                    model="gpt-4o-mini",
+                    model="gpt-4o",
                     messages=[
                         {"role": "system", "content": "Ты дружелюбный консультант магазина спортивной одежды."},
                         {"role": "user", "content": ai_prompt}
@@ -1442,7 +1444,7 @@ async def process_message(message: Message):
         # Отправляем запрос в OpenAI
         response = await asyncio.to_thread(
             openai_client.chat.completions.create,
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=user_states[user_id]["chat_history"],
             tools=tools,
             tool_choice="auto"
@@ -1558,7 +1560,7 @@ async def process_message(message: Message):
             # Стандартная обработка для других случаев
             second_response = await asyncio.to_thread(
                 openai_client.chat.completions.create,
-                model="gpt-4o-mini",
+                model="gpt-4o",
                 messages=user_states[user_id]["chat_history"]
             )
 
@@ -1890,7 +1892,7 @@ async def process_callback(callback: CallbackQuery):
             # Отправляем запрос в OpenAI
             response = await asyncio.to_thread(
                 openai_client.chat.completions.create,
-                model="gpt-4o-mini",
+                model="gpt-4o",
                 messages=[
                     {"role": "system",
                      "content": "Ты дружелюбный консультант магазина спортивной одежды. Твоя задача - помочь клиенту продолжить покупки, учитывая его предыдущие предпочтения."},
@@ -1975,7 +1977,7 @@ async def process_callback(callback: CallbackQuery):
                     # Отправляем запрос в ИИ (используем asyncio.to_thread для вызова синхронного клиента)
                     ai_response = await asyncio.to_thread(
                         openai_client.chat.completions.create,
-                        model="gpt-4o-mini",
+                        model="gpt-4o",
                         messages=[
                             {"role": "system", "content": "Ты дружелюбный консультант магазина спортивной одежды."},
                             {"role": "user", "content": ai_prompt}
@@ -2055,7 +2057,7 @@ async def process_callback(callback: CallbackQuery):
                     # Отправляем запрос в ИИ
                     ai_response = await asyncio.to_thread(
                         openai_client.chat.completions.create,
-                        model="gpt-4o-mini",
+                        model="gpt-4o",
                         messages=[
                             {"role": "system", "content": "Ты дружелюбный консультант магазина спортивной одежды."},
                             {"role": "user", "content": ai_prompt}
