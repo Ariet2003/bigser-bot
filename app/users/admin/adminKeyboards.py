@@ -7,7 +7,7 @@ from app.database import requests as rq
 from app import utils
 
 admin_button = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="📦 Товары", callback_data='manage_products'),
+    [InlineKeyboardButton(text="⚙️ Управление", callback_data='manage_products'),
      InlineKeyboardButton(text="👥 Сотрудники", callback_data='manage_employees')],
     [InlineKeyboardButton(text="📊 Отчёты", callback_data='view_reports'),
      InlineKeyboardButton(text="📢 Рассылка", callback_data='send_notifications')]])
@@ -160,6 +160,7 @@ manage_products_keyboard = InlineKeyboardMarkup(inline_keyboard=[
      InlineKeyboardButton(text="📁 Подкатегории", callback_data='manage_subcategories')],
     [InlineKeyboardButton(text="📦 Товары", callback_data='manage_one_product'),
      InlineKeyboardButton(text="🆔 Генерация", callback_data='generate_photo_id')],
+    [InlineKeyboardButton(text="⭐ OPENAI API", callback_data='change_openai_api')],
     [InlineKeyboardButton(text="⬅️ В личный кабинет", callback_data='go_to_dashboard')]
 ])
 

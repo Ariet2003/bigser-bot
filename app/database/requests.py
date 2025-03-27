@@ -2,7 +2,7 @@ from typing import Optional, List, Dict, Tuple
 from sqlalchemy.orm import selectinload
 from sqlalchemy import or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.database.models import async_session, BroadcastHistory, ProductPhoto, OrderGroup
+from app.database.models import async_session, BroadcastHistory, ProductPhoto, OrderGroup, Setting
 from app.database.models import Color, Category, User, Product, Subcategory, Size, Order, OrderItem
 from app.users.user import userKeyboards as kb
 from sqlalchemy.exc import SQLAlchemyError
@@ -1154,6 +1154,42 @@ async def get_support_manager_details() -> Optional[Dict]:
         if support:
             return {"telegram_id": support[0], "phone_number": support[1]}
         return None
+
+
+async def save_setting(key: str, value: str) -> bool:
+    """
+    Сохраняет настройку в базу данных. Если настройка с таким key уже существует, обновляет её value.
+    Возвращает True, если операция успешна, иначе False.
+    """
+    async with async_session() as session:
+        try:
+            # Проверяем, существует ли запись с таким ключом
+            result = await session.execute(select(Setting).where(Setting.key == key))
+            setting = result.scalar_one_or_none()
+
+            if setting:
+                # Если запись есть, обновляем значение
+                await session.execute(update(Setting).where(Setting.key == key).values(value=value))
+            else:
+                # Если записи нет, создаем новую
+                session.add(Setting(key=key, value=value))
+
+            await session.commit()
+            return True
+        except SQLAlchemyError:
+            await session.rollback()
+            return False
+
+
+async def get_setting_value(key: str) -> Optional[str]:
+    """
+    Получает значение настройки по ключу.
+    Возвращает значение (value) или None, если ключ не найден.
+    """
+    async with async_session() as session:
+        result = await session.execute(select(Setting.value).where(Setting.key == key))
+        setting_value = result.scalar_one_or_none()
+        return setting_value
 
 
 async def check_support_exists():

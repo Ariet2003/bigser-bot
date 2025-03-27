@@ -471,10 +471,8 @@ async def manager_stats(callback_query: CallbackQuery, state: FSMContext):
 
 async def render_manager_orders_view(source, manager_id: str, status_filter: str, sort_order: str, page: int):
     per_page = 10
-    print(manager_id)
     # Получаем список групп заказов: (OrderGroup, fullname, order_datetime)
     order_groups_data = await rq.get_manager_order_groups(manager_id, status_filter, sort_order, page, per_page)
-    print(order_groups_data)
     total_orders = await rq.get_total_manager_order_groups(manager_id, status_filter)
     total_pages = (total_orders + per_page - 1) // per_page if total_orders > 0 else 1
 

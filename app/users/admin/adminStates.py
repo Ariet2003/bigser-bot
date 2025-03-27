@@ -80,3 +80,6 @@ class SupportEditRole(StatesGroup):
 
 class SupportEditTelegram(StatesGroup):
     waiting_for_telegram = State()
+
+class ChangeOPENAI_API(StatesGroup):
+    writing_openai_api = State()

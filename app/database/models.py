@@ -114,6 +114,12 @@ class OrderGroup(Base):
     processed_by_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     order_ids: Mapped[List[int]] = mapped_column(JSON, nullable=False)
 
+class Setting(Base):
+    __tablename__ = 'settings'
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(String(400), nullable=False)
+    value: Mapped[str] = mapped_column(String(400), nullable=False)
+
 async def async_main():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

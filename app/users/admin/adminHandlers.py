@@ -668,6 +668,45 @@ async def manage_products(callback_query: CallbackQuery, state: FSMContext):
 
     user_data['bot_messages'].append(sent_message.message_id)
 
+@router.callback_query(F.data == 'change_openai_api')
+async def change_openai_api(callback_query: CallbackQuery, state: FSMContext):
+    tuid = callback_query.message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(callback_query.message.message_id)
+    await delete_previous_messages(callback_query.message, tuid)
+
+    sent_message = await callback_query.message.answer_photo(
+        photo=utils.adminka_png,
+        caption="Введите новый OPENAI_API: ",
+        reply_markup=kb.go_to_dashboard
+    )
+
+    await state.set_state(st.ChangeOPENAI_API.writing_openai_api)
+    user_data['bot_messages'].append(sent_message.message_id)
+
+@router.message(st.ChangeOPENAI_API.writing_openai_api)
+async def change_openai_api(message: Message, state: FSMContext):
+    tuid = message.chat.id
+    user_data = sent_message_add_screen_ids[tuid]
+    user_data['user_messages'].append(message.message_id)
+    await delete_previous_messages(message, tuid)
+
+    result = await rq.save_setting(key="OPENAI_API", value=message.text)
+
+    if result:
+        sent_message = await message.answer_photo(
+            photo=utils.adminka_png,
+            caption="OPENAI API успешно обновлен/добавлен!",
+            reply_markup=kb.go_to_dashboard
+        )
+        user_data['bot_messages'].append(sent_message.message_id)
+    else:
+        sent_message = await message.answer_photo(
+            photo=utils.adminka_png,
+            caption="При обновлении/добавлении OPENAI API произошло ошибка! Попробуйте еще раз.",
+            reply_markup=kb.go_to_dashboard
+        )
+        user_data['bot_messages'].append(sent_message.message_id)
 
 @router.callback_query(F.data == "manage_categories")
 async def categories_menu(callback_query: CallbackQuery, state: FSMContext):

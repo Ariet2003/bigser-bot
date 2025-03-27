@@ -6,6 +6,7 @@ from app.ai_module.ai_consultant import ai_router
 from app.register.registerHandlers import router
 from app.database.models import async_main
 from bot_instance import bot, dp  # Импортируем bot и dp
+from app.database import requests as rq
 
 # Настройка логирования только для консоли
 logging.basicConfig(
@@ -14,6 +15,7 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S"
 )
 logger = logging.getLogger(__name__)
+
 
 async def main():
     logger.info("Запуск бота...")
@@ -26,6 +28,8 @@ async def main():
     dp.include_router(router)
     dp.include_router(ai_router)
     logger.info("Роутеры зарегистрированы. Начинается polling бота.")
+
+    openai_api_key = await rq.get_setting_value(key="OPENAI_API")
 
     try:
         await dp.start_polling(bot)

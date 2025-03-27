@@ -17,6 +17,7 @@ from app.database.models import async_session, Product, ProductPhoto, User, Orde
     OrderGroup
 from app.users.user.userHandlers import router
 from bot_instance import bot
+from app.database import requests as rq
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -28,8 +29,19 @@ ai_router = Router()
 # Загрузка переменных окружения
 load_dotenv()
 
-# Инициализация бота и диспетчера
-openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+openai_client = None
+
+async def initialize_openai_client():
+    """
+    Инициализирует OpenAI клиент, получая API-ключ из базы данных.
+    """
+    global openai_client
+    api_key = await rq.get_setting_value("OPENAI_API")  # Берём ключ из БД
+    if api_key:
+        openai_client = OpenAI(api_key=api_key)
+        print("✅ OpenAI клиент инициализирован.")
+    else:
+        print("❌ Ошибка: API-ключ не найден в БД.")
 
 # Словарь для хранения состояний пользователей и их корзин
 user_states = {}
@@ -742,7 +754,7 @@ async def complete_order(user_id: int, full_name: str = "", phone: str = "", add
         order_ids = await save_order_to_db(order_info)
 
         # Выводим информацию о заказе в консоль
-        print(json.dumps(order_info, ensure_ascii=False, indent=2))
+        # print(json.dumps(order_info, ensure_ascii=False, indent=2))
 
         # Очищаем корзину пользователя
         user_carts[user_id] = []
@@ -1191,6 +1203,7 @@ async def verify_user_data(user_id: int, is_correct: bool, delivery: bool, full_
 
 @ai_router.callback_query(F.data == 'user_consultation')
 async def cmd_start(callback_query: CallbackQuery):
+    await initialize_openai_client()
     user_id = callback_query.from_user.id
     await callback_query.message.delete()
     user_states[user_id] = {
