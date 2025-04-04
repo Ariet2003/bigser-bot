@@ -1284,7 +1284,7 @@ async def process_message(message: Message):
     fake_callback = CallbackQuery(
         id="dummy_id",
         from_user=message.from_user,
-        message=message,  # или другой объект сообщения, если нужно
+        message=message,
         chat_instance="dummy_instance",
         data="user_consultation"
     )
@@ -1437,10 +1437,17 @@ async def process_message(message: Message):
                 )
             return
 
+    # Проверяем, не выполняется ли уже поиск
+    if user_id in user_states and user_states[user_id].get("search_in_progress"):
+        # Если поиск уже выполняется, отправляем ответ и прерываем обработку
+        await message.answer("Я сейчас ищу товары по вашему предыдущему запросу. Дождитесь результатов, пожалуйста.")
+        return
+
     # Добавляем сообщение пользователя в историю диалога
     user_states[user_id]["chat_history"].append({"role": "user", "content": user_text})
 
     try:
+        user_states[user_id]["search_in_progress"] = True # Помечаем начало поиска
         # Отправляем запрос в OpenAI
         response = await asyncio.to_thread(
             openai_client.chat.completions.create,
@@ -1466,6 +1473,24 @@ async def process_message(message: Message):
                 "update_user_info": lambda params: update_user_info(user_id, **params),
                 "verify_user_data": lambda params: verify_user_data(user_id, **params)
             }
+
+            for tool_call in tool_calls:
+                if tool_call.function.name in ["filter_products", "get_product_details"]:
+                    # Запрашиваем у ИИ сгенерировать сообщение
+                    ai_response = await asyncio.to_thread(
+                        openai_client.chat.completions.create,
+                        model="gpt-4o",
+                        messages=[
+                            {"role": "system", "content": "Ты дружелюбный консультант магазина спортивной одежды."},
+                            {"role": "user",
+                             "content": "Сформулируй очень короткое сообщение для клиента о том, что ты проверяешь наличие товаров."}
+                        ],
+                        max_tokens=50
+                    )
+
+                    await message.answer(ai_response.choices[0].message.content)
+                    user_states[user_id]["chat_history"].append(
+                    {"role": "assistant", "content": ai_response.choices[0].message.content})
 
             # Сохраняем вызов инструмента в историю
             user_states[user_id]["chat_history"].append({
@@ -1493,7 +1518,6 @@ async def process_message(message: Message):
             for tool_call in tool_calls:
                 function_name = tool_call.function.name
                 function_args = json.loads(tool_call.function.arguments)
-
                 function_to_call = available_functions[function_name]
                 function_response = await function_to_call(function_args)
 
@@ -1522,6 +1546,7 @@ async def process_message(message: Message):
 
             # Добавляем все ответы функций в историю
             user_states[user_id]["chat_history"].extend(function_responses)
+            user_states[user_id]["busy"] = False
 
             # Если требуется уточнение, отправляем его напрямую
             if needs_clarification:
@@ -1536,6 +1561,7 @@ async def process_message(message: Message):
                     "content": clarification_message
                 })
                 await message.answer(clarification_message)
+                user_states[user_id].pop("search_in_progress", None) # Убираем флаг поиска
                 return
 
             # Если нужно показать товары в виде карусели
@@ -1554,7 +1580,7 @@ async def process_message(message: Message):
                     )
                 else:
                     await message.answer("Извините, не удалось показать товары. Попробуйте еще раз.")
-
+                user_states[user_id].pop("search_in_progress", None) # Убираем флаг поиска
                 return
 
             # Стандартная обработка для других случаев
@@ -1566,6 +1592,7 @@ async def process_message(message: Message):
 
             new_ai_message = second_response.choices[0].message
             user_states[user_id]["chat_history"].append({"role": "assistant", "content": new_ai_message.content})
+            user_states[user_id]["busy"] = False
 
             # Если это была функция get_product_details, нужно отправить фото товара
             send_text_message = True
@@ -1584,6 +1611,7 @@ async def process_message(message: Message):
                                 parse_mode="Markdown"
                             )
                             send_text_message = False
+                            user_states[user_id].pop("search_in_progress", None) # Убираем флаг поиска
                             break
                         except Exception as e:
                             logger.error(f"Ошибка при отправке фото: {e}")
@@ -1592,17 +1620,23 @@ async def process_message(message: Message):
             # Отправляем текстовый ответ пользователю только если не отправили фото с подписью
             if send_text_message:
                 await message.answer(new_ai_message.content)
+            user_states[user_id].pop("search_in_progress", None) # Убираем флаг поиска
 
         # Если ИИ не вызывает функцию, просто отправляем сообщение
         else:
             user_states[user_id]["chat_history"].append({"role": "assistant", "content": ai_message.content})
             await message.answer(ai_message.content)
+            user_states[user_id].pop("search_in_progress", None) # Убираем флаг поиска
 
     except Exception as e:
         logger.error(f"Ошибка при обработке сообщения: {e}")
         await message.answer(
             "Извините, произошла небольшая техническая заминка. Давайте попробуем еще раз? Пожалуйста, повторите ваш вопрос.")
-
+        return
+    finally:
+        # Разблокируем пользователя после завершения работы
+        if user_id in user_states:
+            user_states[user_id].pop("search_in_progress", None)
 
 async def create_product_carousel(products: List[Dict], product_index: int = 0, photo_index: int = 0) -> tuple[
     InputMediaPhoto, InlineKeyboardMarkup]:
